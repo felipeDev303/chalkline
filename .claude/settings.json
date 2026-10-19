@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "additionalDirectories": ["../wiki"],
+    "deny": [
+      "Read(./.env)",
+      "Edit(../wiki/**)",
+      "Write(../wiki/**)"
+    ]
+  }
+}
