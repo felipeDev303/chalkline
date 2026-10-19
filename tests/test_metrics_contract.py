@@ -51,8 +51,17 @@ def test_fact_rejects_display_that_disagrees_with_value():
              unit="pct", display="83.6%")
 
 
-def test_label_and_minute_facts():
-    assert fact("summary.team:T1.formation", "Formation", "4-3-3", "label").display == "4-3-3"
+def test_text_units():
+    assert fact("summary.team:T1.formation", "Formation", "4-3-3", "formation").display == "4-3-3"
+    assert fact("summary.scoreline", "Scoreline", "2-1", "scoreline").display == "2-1"
+    assert fact("window.p1.w00.state", "State", "chaos", "label").display == "chaos"
+    for value, unit in (("4-3", "formation"), ("2-1-0", "scoreline"), ("2-1", "label"),
+                        ("top 3", "label")):
+        with pytest.raises(ValidationError):
+            fact("summary.x", "x", value, unit)
+
+
+def test_minute_facts():
     assert minute_display(63) == "63'"
     assert minute_display(45, 2) == "45+2'"
     m = minute_fact("moment:goal@412", "Goal minute", 45, 2)

@@ -18,13 +18,16 @@ internals, never ground-truth sidecars (both enforced by `tests/test_metrics_iso
   | Unit | Display | Example |
   |---|---|---|
   | count | integer | `1029` |
+  | decimal (a mean of counts) | 1 decimal | `5.0` |
   | pct (a rate) | 1 decimal + `%` | `83.6%` |
   | share (a split of a whole) | integer + `%` | `55%` |
   | m, km/h, seconds | 1 decimal + unit | `22.8 m`, `92.4 km/h`, `3.0 s` |
   | per_min | 1 decimal + `/min` | `-4.3/min` |
   | score (0-100 index) | integer | `72` |
   | minute | minute mark | `63'`, `45+2'` |
-  | label | as is | `4-3-3`, `2-1`, `control` |
+  | formation | outfield shape, defenders first | `4-3-3` |
+  | scoreline | home-away goals, one fact per match | `2-1` |
+  | label | words only, no digits | `control` |
 
 - Table cells are for rendering only. A number a narrative may quote must be a fact.
 - **Minimum samples:** when a tool lacks the sample to support a number, it omits the
@@ -70,8 +73,10 @@ and shows the evidence.
   number written in the other locale's style does not parse and is rejected, as are
   space-separated thousands (`1 029`).
 - **Single tokens:** minute marks (`63'`, `45+2'`, also `45+2` without the mark) and
-  hyphenated digit groups (`4-3-3`, `2-1`) are matched against display strings, so a
-  score must be quoted in the fact's order (home-away).
+  hyphenated digit groups. A formation must match in order (`4-3-3` is not `3-3-4`).
+  A scoreline matches as an unordered pair, so "lost 1-2" and "won 2-1" both match
+  the `2-1` fact. **Who won, who leads, and which team a scoreline is told from is not
+  checked here; that attribution is the verifier agent's job.**
 - **Number words 0-20** (`three`, `tres`) count as numbers. `un`/`una` do not (they are
   mostly articles). Idioms whose number word is no quantity claim are exempt, each
   covered by a test: en `one of`, `one-two`, `one-on-one`, `one on one`, `one-touch`,
@@ -88,5 +93,113 @@ and shows the evidence.
 
 ## Tools
 
-Documented here as each tool lands: definition, formula, thresholds, minimum sample,
-caveats and what it cannot tell.
+Registered in `metrics/registry.py`, which also exports strict JSON schemas for function
+calling. Every threshold below is a constant in the tool's `THRESHOLDS`; a test fails if
+this document and the code disagree.
+
+### `match_summary`
+
+- **Definition:** scoreline (home-away), current minute, and per team: goals, shots,
+  shots on target (goal or saved), passes, pass completion, possession share, formation.
+- **Formula:** counts of events so far; completion = completed / attempted passes;
+  possession share = team in-play seconds / total in-play seconds (see Shared definitions).
+- **Thresholds:** `min_passes` = 15 (completion), `min_in_play_s` = 60 (possession share).
+- **Caveats:** possession is time-based, not pass-based, so it can differ from broadcast
+  figures.
+- **Cannot tell:** who deserved to win; quality of the shots (use `shot_profile`).
+
+### `pass_profile`
+
+- **Definition:** passing of a team or a player: count, completion, mean length, mean
+  ball speed, mean difficulty, and the 3 hardest completed passes (difficulty, minute,
+  length).
+- **Formula:** length = straight line start to end (m); ball speed = length / flight
+  duration x 3.6 (km/h). **Difficulty** (0-100), in the passer's attacking frame:
+
+  ```text
+  100 * clamp(0.30 * min(length / 50, 1)
+            + 0.20 * under_pressure
+            + 0.15 * height                         # ground 0, low 0.5, high 1
+            + 0.20 * clamp(forward_progress / 30, 0, 1)
+            + 0.15 * zone,                          # box 1, final third 0.5, else 0
+            0, 1)
+  ```
+
+  Ties among the hardest passes go to the earlier one.
+- **Thresholds:** `min_passes` = 15 (rates and means), `hardest_shown` = 3.
+- **Caveats:** a fixed formula, not a learned model; it ignores where other players are
+  (no tracking data), so a short pass through a crowded midfield scores low.
+- **Cannot tell:** whether a pass was the right choice; intended receiver of failed passes.
+
+### `shot_profile`
+
+- **Definition:** shots, on target, goals, fastest and mean shot speed, best and mean
+  chance quality for a team or a player.
+- **Formula:** **chance quality** (0-100) = angle between the posts seen from the shot
+  location (goal 7.32 m wide), divided by that angle from the penalty spot (0.6423 rad),
+  capped at 1, x 100; headers x 0.7. A geometric index, unrelated to the simulator's
+  internal scoring. Check against outcomes over simulated seeds 0-99 (2,626 shots):
+  conversion rises steadily with quality, 3.3% (0-20), 5.6% (20-40), 9.1% (40-60),
+  13.1% (60-80), 17.1% (80-100), 25.1% (100).
+- **Thresholds:** `min_shots` = 3 (means).
+- **Caveats:** not a probability and not calibrated to real conversion rates; ignores
+  defenders and the goalkeeper (no tracking data).
+- **Cannot tell:** how well a shot was struck beyond its speed; deflections.
+
+### `control_vs_chaos`
+
+- **Definition:** each 5-minute window classified as `control`, `contested` or `chaos`,
+  with possession split, open-play turnovers per minute (interceptions and tackles won),
+  pressures per minute per team and pass completion; plus rhythm: events per minute and
+  passes per possession.
+- **Formula:** a window is **chaos** if turnovers/min >= `chaos_turnovers_per_min` or
+  completion < `chaos_completion_pct`; else **control** if the dominant team's possession
+  share >= `control_share_pct` and turnovers/min <= `control_turnovers_per_min`; else
+  **contested**. Windows are classified once they have events and `min_window_s` of play.
+- **Thresholds:** `min_window_s` = 120, `min_window_passes` = 5 (completion shown),
+  `control_share_pct` = 56, `control_turnovers_per_min` = 1.2,
+  `chaos_turnovers_per_min` = 2.0, `chaos_completion_pct` = 70. Chosen from 3,911
+  eligible windows over simulated seeds 0-199 so that 25% are control, 51% contested and
+  24% chaos.
+- **Caveats:** thresholds not validated against ground truth yet (planned: simulator
+  tactical regimes with labels); the current window is partial.
+- **Cannot tell:** why a window was chaotic; quality of play in a "controlled" window.
+
+### `pressure_shift`
+
+- **Definition:** moments when a team's pressures per minute change sharply between
+  consecutive complete 5-minute windows (they may straddle half time).
+- **Formula:** shift if |after - before| >= `min_delta_per_min` and
+  |after - before| >= `min_relative_change` x before.
+- **Thresholds:** `min_delta_per_min` = 1.6, `min_relative_change` = 0.5,
+  `min_complete_windows` = 2. 1.6/min lies between the 95th and 99th percentile of
+  window-to-window changes in simulated matches, which contain no planned shifts, so on
+  those matches every detection is a false positive: 1.2 per match on average over seeds
+  0-199 (both teams), and 74 of the 200 matches have none.
+- **Caveats:** thresholds not validated against ground truth yet.
+- **Cannot tell:** the cause of a shift (tactics, score, fatigue, where the ball was).
+
+### `key_moments`
+
+- **Definition:** ranked moments up to `as_of_seq`, each with its minute, an importance
+  score and its own facts (evidence ids `moment:<kind>@<seq>...`).
+- **Formula:** importance: goal 100; big chance (non-goal shot with chance quality >=
+  `big_chance_quality`) 40 + 0.4 x quality; control/chaos swing (consecutive classified
+  windows going control to chaos or back) 50; pressure shift 40; hardest completed pass
+  35; passing sequence (possession with >= `sequence_passes` passes) 30 + 2 per pass
+  beyond 10, capped at 90 so it never outranks a goal; a player's `milestone_passes`-th
+  pass 20. Ranked by importance, then time.
+- **Thresholds:** `big_chance_quality` = 90 (about 2.5 per team per simulated match),
+  `sequence_passes` = 10, `milestone_passes` = 50.
+- **Caveats:** importance is a fixed editorial weighting, not a measure of impact.
+- **Cannot tell:** moments that leave no event (a run that drags a defender away).
+
+### `player_focus`
+
+- **Definition:** one player's shirt number, touches (passes, shots and possessions won),
+  passes, completion, mean pass difficulty, shots, goals, tackles (won), pressures, and
+  the key moments where they are the passer, shooter or milestone owner, with those
+  moments' facts.
+- **Thresholds:** `min_passes` = 15 (completion and mean difficulty), `moments_shown` = 5.
+- **Caveats:** off-ball work is invisible without tracking data.
+- **Cannot tell:** the player's influence on moments they did not touch.

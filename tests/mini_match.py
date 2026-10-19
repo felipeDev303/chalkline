@@ -94,6 +94,31 @@ def _phase(seq, period, clock, team, phase) -> Phase:
     return Phase(**_base(seq, period, clock, team, None, CENTRE), phase=phase)
 
 
+def build_pressure_match(pressures_per_window: tuple[int, ...] = (2, 2, 12, 12)) -> Match:
+    """T2 keeps the ball (12 short passes per 5-minute window) while T1 presses
+    `pressures_per_window[i]` times in window i. One last pass at 20:50 opens a partial
+    window. With the default counts, T1 presses 0.4, 0.4, 2.4, 2.4 per minute: one
+    upward shift (+2.0/min) in the window starting at 10'.
+    """
+    timeline: list[tuple[float, str]] = [(0.0, "kickoff")]
+    for i, count in enumerate(pressures_per_window):
+        base = i * 300.0
+        timeline += [(base + 2 + 20 * j, "pass") for j in range(12)]
+        timeline += [(base + 5 + 20 * j, "pressure") for j in range(count)]
+    timeline.append((len(pressures_per_window) * 300.0 + 50, "pass"))
+    events = []
+    for seq, (clock, kind) in enumerate(sorted(timeline)):
+        if kind == "kickoff":
+            events.append(_phase(seq, 1, clock, "T2", "kickoff"))
+        elif kind == "pass":
+            events.append(_pass(seq, 1, clock, "T2", "T2-3", (50.0, 34.0), (45.0, 34.0),
+                                "T2-2", "complete"))
+        else:
+            events.append(Pressure(**_base(seq, 1, clock, "T1", "T1-2", (50.0, 34.0)),
+                                   target_player_id="T2-3", duration_s=1.0))
+    return Match(metadata=build_mini_match().metadata, events=tuple(events))
+
+
 def build_mini_match() -> Match:
     metadata = MatchMetadata(
         match_id="mini",

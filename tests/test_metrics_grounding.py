@@ -19,8 +19,9 @@ def _result(*facts, as_of_seq=500):
 FACTS = _result(
     fact("pass.team:T1.completion_pct", "Pass completion", 83.6, "pct"),
     fact("summary.team:T1.passes", "Passes", 1029, "count"),
-    fact("summary.team:T1.formation", "Formation", "4-3-3", "label"),
-    fact("summary.score", "Score", "2-1", "label"),
+    fact("summary.team:T1.formation", "Formation", "4-3-3", "formation"),
+    fact("summary.scoreline", "Scoreline (home-away)", "2-1", "scoreline"),
+    fact("window.p1.w03.state", "Window state", "control", "label"),
     minute_fact("moment:goal@412", "Goal minute", 63),
     minute_fact("moment:goal@700", "Goal minute", 45, 2),
     fact("player:T1-9.passes", "Passes", 50, "count"),
@@ -85,7 +86,8 @@ def test_articles_un_una_are_not_numbers():
 def test_accepts_correct_en_narrative():
     report = validate(EN_OK, [FACTS], "en")
     assert report.ok, report.unmatched_numbers
-    assert set(report.matched_ids) == {f.evidence_id for f in FACTS.facts}
+    quotable = {f.evidence_id for f in FACTS.facts if f.unit != "label"}
+    assert set(report.matched_ids) == quotable
 
 
 def test_accepts_correct_es_narrative():
@@ -115,10 +117,18 @@ def test_small_integers_need_a_fact_too():
     assert validate("3 shots", [FACTS], "en").ok
 
 
-def test_digit_groups_match_display_strings_only():
+def test_formation_matches_in_order():
     assert validate("a 4 - 3 - 3 shape", [FACTS], "en").ok
     assert validate("a 4-4-2 shape", [FACTS], "en").unmatched_numbers == ("4-4-2",)
-    assert validate("lost 1-2", [FACTS], "en").unmatched_numbers == ("1-2",)
+    assert validate("a 3-3-4 shape", [FACTS], "en").unmatched_numbers == ("3-3-4",)
+
+
+def test_scoreline_matches_as_an_unordered_pair():
+    assert validate("Birch lost 1-2", [FACTS], "en").ok
+    assert validate("Alder won 2–1", [FACTS], "en").ok
+    assert validate("a 3-1 win", [FACTS], "en").unmatched_numbers == ("3-1",)
+    # a scoreline is not a formation and vice versa
+    assert validate("a 2-1 shape", [_result(FACTS.facts[2])], "en").unmatched_numbers == ("2-1",)
 
 
 def test_minute_marks():

@@ -23,20 +23,30 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pitchside.events.match import Match
 
 Unit = Literal[
-    "count", "pct", "share", "m", "km/h", "score", "per_min", "seconds", "minute", "label",
+    "count", "decimal", "pct", "share", "m", "km/h", "score", "per_min", "seconds", "minute",
+    "formation", "scoreline", "label",
 ]
+# Units whose value is a string shown as is. `label` is words only (a window state);
+# digit groups must be a `formation` (ordered) or a `scoreline` (unordered pair).
+TEXT_UNITS = frozenset({"formation", "scoreline", "label"})
 
 # Decimals and suffix of the display string, per unit. `pct` is a rate (completion),
 # `share` a split of a whole (possession), `score` a 0-100 index.
 _DECIMALS: dict[str, int] = {
-    "count": 0, "pct": 1, "share": 0, "m": 1, "km/h": 1, "score": 0, "per_min": 1, "seconds": 1,
+    "count": 0, "decimal": 1, "pct": 1, "share": 0, "m": 1, "km/h": 1, "score": 0,
+    "per_min": 1, "seconds": 1,
 }
 _SUFFIX: dict[str, str] = {
-    "count": "", "pct": "%", "share": "%", "m": " m", "km/h": " km/h", "score": "",
-    "per_min": "/min", "seconds": " s",
+    "count": "", "decimal": "", "pct": "%", "share": "%", "m": " m", "km/h": " km/h",
+    "score": "", "per_min": "/min", "seconds": " s",
 }
 EVIDENCE_ID_PATTERN = r"^[a-z][a-z_]*[.:][A-Za-z0-9_.:@+\-]+$"
 MINUTE_DISPLAY_RE = re.compile(r"^\d{1,3}(\+\d{1,2})?'$")
+_TEXT_DISPLAY_RE = {
+    "formation": re.compile(r"^\d(?:-\d){2,4}$"),
+    "scoreline": re.compile(r"^\d{1,2}-\d{1,2}$"),
+    "label": re.compile(r"^[^\d]+$"),
+}
 MAX_TABLE_ROWS = 20
 
 
@@ -74,8 +84,12 @@ class Fact(_Strict):
 
     @model_validator(mode="after")
     def _display_matches_value(self) -> Fact:
-        if self.unit == "label":
-            ok = self.display == str(self.value)
+        if self.unit in TEXT_UNITS:
+            ok = (
+                isinstance(self.value, str)
+                and self.display == self.value
+                and bool(_TEXT_DISPLAY_RE[self.unit].match(self.display))
+            )
         elif self.unit == "minute":
             ok = isinstance(self.value, int) and bool(MINUTE_DISPLAY_RE.match(self.display))
         else:
@@ -89,7 +103,7 @@ class Fact(_Strict):
 
 
 def fact(evidence_id: str, label: str, value: float | str, unit: Unit) -> Fact:
-    if unit == "label":
+    if unit in TEXT_UNITS:
         return Fact(evidence_id=evidence_id, label=label, value=str(value), unit=unit,
                     display=str(value))
     if unit == "minute":

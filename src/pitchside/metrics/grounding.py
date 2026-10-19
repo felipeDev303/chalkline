@@ -4,8 +4,9 @@ Rules (docs/METHODS.md, "Grounding"):
 - Facts come only from the ToolResults of the same agent turn (one as_of_seq).
 - Digits are read by locale: en "1,029.5", es "1.029,5". A number written in the
   other locale's style does not parse cleanly and is rejected.
-- Minute marks (63', 45+2') and hyphenated digit groups (4-3-3, 2-1) are single
-  tokens matched against display strings.
+- Minute marks (63', 45+2') and hyphenated digit groups are single tokens: a
+  formation (4-3-3) must match in order; a scoreline matches as an unordered pair
+  (1-2 matches a 2-1 fact). Who won is not checked here (verifier's job).
 - Number words 0-20 count as numbers, except inside the tested idioms below.
 - A number passes only if it equals a fact display after normalisation (83.6 ==
   83.60, % and units ignored); 84 does not match a fact shown as 83.6%.
@@ -156,26 +157,41 @@ def extract_numbers(text: str, locale: Locale) -> tuple[NumberToken, ...]:
 @dataclass(frozen=True)
 class _FactIndex:
     numbers: dict[Decimal, list[str]]
-    keys: dict[str, list[str]]  # minute marks and digit groups, by display string
+    keys: dict[str, list[str]]  # minute marks and formations, by display string
+    pairs: dict[tuple[int, int], list[str]]  # scorelines, as a sorted pair
+
+
+def _pair(group: str) -> tuple[int, int] | None:
+    parts = group.split("-")
+    if len(parts) != 2:
+        return None
+    a, b = sorted(int(p) for p in parts)
+    return (a, b)
 
 
 def _index(facts: Sequence[Fact]) -> _FactIndex:
     numbers: dict[Decimal, list[str]] = {}
     keys: dict[str, list[str]] = {}
+    pairs: dict[tuple[int, int], list[str]] = {}
     for f in facts:
         display = f.display.strip()
         if f.unit == "minute":
             keys.setdefault(display, []).append(f.evidence_id)
             if "+" not in display:  # "the 63rd minute" quotes 63' as a plain number
                 numbers.setdefault(Decimal(display[:-1]), []).append(f.evidence_id)
+        elif f.unit == "formation":
+            keys.setdefault(display, []).append(f.evidence_id)
+        elif f.unit == "scoreline":
+            pair = _pair(display)
+            assert pair is not None
+            pairs.setdefault(pair, []).append(f.evidence_id)
         elif f.unit == "label":
-            if re.fullmatch(r"\d{1,3}(?:-\d{1,3})+", display):
-                keys.setdefault(display, []).append(f.evidence_id)
+            continue  # words only, nothing to quote as a number
         else:
             m = _DISPLAY_NUMBER.match(display)
             if m:
                 numbers.setdefault(Decimal(m.group()), []).append(f.evidence_id)
-    return _FactIndex(numbers, keys)
+    return _FactIndex(numbers, keys, pairs)
 
 
 def validate(text: str, results: Sequence[ToolResult], locale: Locale) -> GroundingReport:
@@ -190,7 +206,11 @@ def validate(text: str, results: Sequence[ToolResult], locale: Locale) -> Ground
     matched: list[str] = []
     tokens = extract_numbers(text, locale)
     for token in tokens:
-        if token.key is not None:
+        if token.kind == "group":
+            assert token.key is not None
+            pair = _pair(token.key)
+            ids = index.keys.get(token.key, []) + (index.pairs.get(pair, []) if pair else [])
+        elif token.key is not None:
             ids = index.keys.get(token.key, [])
         elif token.value is not None:
             ids = index.numbers.get(token.value, [])

@@ -7,9 +7,10 @@ Consumes only `pitchside.events`. Definitions are documented in docs/METHODS.md
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
+from typing import Literal
 
 from pitchside.events.match import Match, attacks_high_x
 from pitchside.events.schema import (
@@ -68,6 +69,18 @@ class MatchView:
                 if player.player_id == player_id:
                     return team, player
         raise ToolError("unknown_player", f"no player {player_id!r} in this match")
+
+
+Subject = Literal["team", "player"]
+
+
+def by_subject(v: MatchView, subject: Subject, subject_id: str) -> Callable[[MatchEvent], bool]:
+    """Predicate for events credited to a team (`team_id`) or a player (`player_id`)."""
+    if subject == "team":
+        v.team(subject_id)
+        return lambda e: e.team_id == subject_id
+    v.player(subject_id)
+    return lambda e: e.player_id == subject_id
 
 
 def view(match: Match, as_of_seq: int) -> MatchView:
