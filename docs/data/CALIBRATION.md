@@ -8,16 +8,16 @@ The same seeds and bounds as the realism test in `tests/test_simulator.py`.
 
 | Metric | Mean | Std | Target | Result |
 |---|---|---|---|---|
-| passes | 1025.5 | 32.3 | 900-1100 | pass |
-| pass_completion | 0.841 | 0.014 | 0.8-0.88 | pass |
-| mean_pass_length_m | 22.8 | 0.3 | - | info |
-| shots | 25.9 | 4.2 | 20-30 | pass |
-| goals | 3.3 | 2.2 | 2-4 | pass |
-| shots_on_target | 9.9 | 2.4 | - | info |
-| tackles | 34.5 | 7.4 | - | info |
-| pressures | 201.7 | 16.0 | - | info |
-| possession_changes | 214.1 | 15.7 | - | info |
-| events | 1509.1 | 44.0 | - | info |
+| passes | 1033.2 | 30.7 | 900-1100 | pass |
+| pass_completion | 0.833 | 0.011 | 0.8-0.88 | pass |
+| mean_pass_length_m | 22.9 | 0.2 | - | info |
+| shots | 25.0 | 4.3 | 20-30 | pass |
+| goals | 3.1 | 2.0 | 2-4 | pass |
+| shots_on_target | 9.7 | 2.4 | - | info |
+| tackles | 37.6 | 8.1 | - | info |
+| pressures | 242.9 | 35.5 | - | info |
+| possession_changes | 222.2 | 14.2 | - | info |
+| events | 1568.2 | 65.7 | - | info |
 
 ## Robustness: long-run mean over seeds 0-199 (200 matches)
 
@@ -27,10 +27,38 @@ of a 20-seed mean (std / sqrt(20)). At 2 SE or more, any 20 seeds very likely me
 
 | Metric | Mean | Std | Target | Margin (SE) | Result |
 |---|---|---|---|---|---|
-| passes | 1029.0 | 40.2 | 900-1100 | 7.9 | pass |
-| pass_completion | 0.836 | 0.011 | 0.8-0.88 | 15.0 | pass |
-| shots | 25.9 | 4.7 | 20-30 | 3.9 | pass |
-| goals | 3.1 | 1.7 | 2-4 | 2.5 | pass |
+| passes | 1031.0 | 39.1 | 900-1100 | 7.9 | pass |
+| pass_completion | 0.833 | 0.010 | 0.8-0.88 | 14.3 | pass |
+| shots | 25.8 | 4.7 | 20-30 | 3.9 | pass |
+| goals | 3.0 | 1.6 | 2-4 | 2.7 | pass |
+
+## Detector evaluation (planted regimes)
+
+Simulated matches carry planted pressing changes (ground truth in `<match>.truth.json`, never in the event stream): seeded spells of pressing harder or dropping off, and a trailing team pressing harder from 60'. Seeds divisible by 5 are a control group with no regimes.
+
+Thresholds were tuned on dev seeds 0-99 (100 matches) with `scripts/tune_detectors.py` (rule: best F1 with at most 1.0 false positive per control match). Reported here on test seeds 200-399 (200 matches), never used for tuning: 160 treated and 40 control matches. A detection is a hit if it has the same team and direction as a planted change within +/-1 window.
+
+| pressure_shift | Value |
+|---|---|
+| thresholds | delta >= 1.6/min, relative >= 0.25 |
+| planted changes / detections (treated) | 1170 / 529 |
+| precision | 0.648 |
+| recall | 0.293 |
+| F1 | 0.404 |
+| false positives per control match | 0.72 (before stage B: 1.2) |
+
+| Recall by cause | Planted | Hit | Recall |
+|---|---|---|---|
+| planned_drop | 191 | 9 | 0.047 |
+| planned_press | 299 | 129 | 0.431 |
+| spell_end | 490 | 168 | 0.343 |
+| trailing | 161 | 33 | 0.205 |
+| trailing_end | 29 | 4 | 0.138 |
+
+| control_vs_chaos (treated matches) | Windows | Chaos | Chaos rate |
+|---|---|---|---|
+| inside a planted high-pressure spell | 771 | 290 | 0.376 |
+| outside | 2368 | 595 | 0.251 |
 
 ## Qualitative review
 
@@ -51,7 +79,12 @@ were also read event by event (seed 42, stretches of ~30 lines). Issues found:
 - No corners: a ball out over the goal line is always a goal kick.
 - Mean pass length is 22.8 m over the robustness seeds, slightly
   long for professional football (typically around 20 m).
-- Cross-OS byte identity is designed in (one Mersenne Twister stream, only IEEE-exact
+- pressure_shift compares 5-minute windows of a few pressures each, so counting noise
+  limits it: it finds clear increases in pressing but almost never a drop, which is
+  smaller than its absolute threshold (see recall by cause above).
+- Planted regimes change only pressing intensity; other tactics (pace, width, line
+  height) are not simulated yet.
+- Cross-OS byte identity is designed in (seeded Mersenne Twister streams, only IEEE-exact
   arithmetic and `math.sqrt`, no libm transcendentals) but is only proven by the
   golden SHA-256 test. If Windows and Linux ever produce different bytes, the hash
   from Linux CI is canonical.

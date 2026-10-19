@@ -194,7 +194,7 @@ def run(match: Match, params: Params) -> ToolResult:
             "then time."
         ),
         caveats=("Importance is a fixed editorial weighting, not a measure of match impact.",
-                 "Swings and pressure shifts use thresholds not validated against ground "
-                 "truth yet."),
+                 "Pressure shifts catch clear increases in pressing but miss most drops; "
+                 "swings use percentile-based thresholds (docs/data/CALIBRATION.md)."),
         cannot_tell=() if candidates else ("No notable moment yet.",),
     )

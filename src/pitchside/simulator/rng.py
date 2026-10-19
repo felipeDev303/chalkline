@@ -13,7 +13,8 @@ from collections.abc import Sequence
 
 
 class Rng:
-    def __init__(self, seed: int) -> None:
+    def __init__(self, seed: int | str) -> None:
+        # str seeds are hashed with SHA-512 by random.Random: stable on every platform.
         self._r = random.Random(seed)
 
     def random(self) -> float:

@@ -40,6 +40,7 @@ from pitchside.simulator.pitch import (
     to_point,
     zone,
 )
+from pitchside.simulator.regimes import MatchTruth, RegimeTracker, plan_spells
 from pitchside.simulator.rng import Rng
 
 PERIOD_S = 45 * 60
@@ -62,10 +63,20 @@ SHOT_MISSES = ("blocked", "off_target", "saved", "post")
 
 
 def simulate_match(seed: int, params: SimParams = DEFAULT_PARAMS) -> Match:
+    return simulate_match_with_truth(seed, params)[0]
+
+
+def simulate_match_with_truth(
+    seed: int, params: SimParams = DEFAULT_PARAMS
+) -> tuple[Match, MatchTruth]:
+    """The match plus its ground truth (planted regimes), which never enters the events."""
     rng = Rng(seed)
     metadata = _make_metadata(seed, rng)
-    events = _Engine(metadata, rng, params).run()
-    return Match(metadata=metadata, events=events)
+    tracker = RegimeTracker(seed=seed, params=params,
+                            team_ids=(metadata.home.team_id, metadata.away.team_id),
+                            spells=plan_spells(seed, params))
+    events = _Engine(metadata, rng, params, tracker).run()
+    return Match(metadata=metadata, events=events), tracker.truth(metadata.match_id)
 
 
 def _make_metadata(seed: int, rng: Rng) -> MatchMetadata:
@@ -93,9 +104,12 @@ def shape(ball: XY, margin: float) -> list[XY]:
 
 
 class _Engine:
-    def __init__(self, meta: MatchMetadata, rng: Rng, params: SimParams) -> None:
+    def __init__(self, meta: MatchMetadata, rng: Rng, params: SimParams,
+                 regimes: RegimeTracker) -> None:
         self.meta = meta
         self.rng = rng
+        self.regimes = regimes
+        self.goals = [0, 0]  # by side, for the trailing-team regime
         self.p = params
         self.teams = (meta.home, meta.away)
         self.events: list[MatchEvent] = []
@@ -188,6 +202,7 @@ class _Engine:
     # --- one action by the ball carrier -------------------------------------
 
     def _step(self) -> None:
+        self.regimes.observe(self.period, self.clock, self.goals)
         self.pressured = False
         restart, self.restart = self.restart, None
         if restart is None and self._contest():
@@ -203,7 +218,8 @@ class _Engine:
         p, rng = self.p, self.rng
         here = flip(self.ball)  # the ball in the defenders' frame
         presser: int | None = None
-        if rng.chance(p.pressure_prob[zone(self.ball)]):
+        press = p.pressure_prob[zone(self.ball)] * self.regimes.intensity(self.dfn)
+        if rng.chance(min(press, p.max_pressure_prob)):
             near = self._nearest(self.dfn, here)
             presser = near[0] if rng.chance(0.7) else near[1]
             self._emit(
@@ -405,6 +421,7 @@ class _Engine:
         self.from_cross = False
 
         if outcome == "goal":
+            self.goals[self.att] += 1
             self.clock += rng.uniform(*p.dead_time_goal_s)
             self._kickoff(self.dfn, after_goal=True)
         elif outcome == "saved":

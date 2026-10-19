@@ -85,5 +85,19 @@ class SimParams(BaseModel):
     shot_speed_foot: tuple[float, float, float, float] = (92.0, 14.0, 35.0, 150.0)
     shot_speed_head: tuple[float, float, float, float] = (55.0, 10.0, 30.0, 90.0)
 
+    # --- planted tactical regimes (ground truth in <match>.truth.json) -----
+    control_every: int = 5  # seeds divisible by this are the control group: no regimes
+    spells_per_team: tuple[int, int] = (1, 2)  # planned pressing spells, inclusive
+    spell_start_s: Range = (300.0, 1800.0)  # on the period clock
+    spell_duration_s: Range = (600.0, 1080.0)
+    spell_latest_end_s: float = 2640.0  # spells end before 44:00 of a period
+    spell_min_gap_s: float = 600.0  # between two spells of the same team
+    high_spell_prob: float = 0.65  # otherwise the spell is a drop
+    high_factor: Range = (2.2, 3.0)  # pressure intensity multiplier in a high spell
+    low_factor: Range = (0.25, 0.45)  # and in a low spell
+    trailing_factor: float = 1.6  # a trailing team presses harder...
+    trailing_from_s: float = 900.0  # ...from 60' (15:00 of period 2)
+    max_pressure_prob: float = 0.9
+
 
 DEFAULT_PARAMS = SimParams()

@@ -125,7 +125,7 @@ def test_shot_profile(mini):
 # --- control_vs_chaos ------------------------------------------------------------
 
 def test_control_vs_chaos(mini):
-    result = control_vs_chaos.run(mini, control_vs_chaos.Params(as_of_seq=19))
+    result = control_vs_chaos.run(mini, control_vs_chaos.Params(as_of_seq=19, scope="all"))
     d = displays(result)
     # Only window p1.w00 has events and >= 120 s of play.
     assert result.sample_size == 1
@@ -144,11 +144,11 @@ def test_control_vs_chaos(mini):
     assert d["rhythm.mean_possession_passes"] == "1.3"
     # 20 events over 45.25 minutes of observed play (2705 s + 10 s)
     assert d["rhythm.events_per_min"] == "0.4/min"
-    assert control_vs_chaos.CAVEAT_UNVALIDATED in result.caveats
+    assert control_vs_chaos.CAVEAT_THRESHOLDS in result.caveats
 
 
 def test_control_vs_chaos_before_any_window(mini):
-    result = control_vs_chaos.run(mini, control_vs_chaos.Params(as_of_seq=7))
+    result = control_vs_chaos.run(mini, control_vs_chaos.Params(as_of_seq=7, scope="all"))
     assert result.sample_size == 0 and result.cannot_tell
 
 
@@ -165,7 +165,7 @@ def test_window_classification_rules(mini):
 def test_pressure_shift_detects_planted_change():
     match = build_pressure_match()
     result = pressure_shift.run(match, pressure_shift.Params(as_of_seq=match.events[-1].seq,
-                                                             team_id="T1"))
+                                                             team_id="T1", scope="all"))
     d = displays(result)
     assert d["pressure.team:T1.shifts"] == "1"
     s = "pressure.team:T1.shift1"
@@ -180,13 +180,49 @@ def test_pressure_shift_needs_both_conditions():
     # +1.4/min (0.4 -> 1.8) is under the 1.6 absolute threshold
     match = build_pressure_match((2, 2, 9, 9))
     d = displays(pressure_shift.run(match, pressure_shift.Params(
-        as_of_seq=match.events[-1].seq, team_id="T1")))
+        as_of_seq=match.events[-1].seq, team_id="T1", scope="all")))
     assert d["pressure.team:T1.shifts"] == "0"
 
 
 def test_pressure_shift_min_sample(mini):
-    result = pressure_shift.run(mini, pressure_shift.Params(as_of_seq=19, team_id="T1"))
+    params = pressure_shift.Params(as_of_seq=19, team_id="T1", scope="all")
+    result = pressure_shift.run(mini, params)
     assert result.facts == () and result.cannot_tell
+
+
+def _seq_at(match, clock_s):
+    return next(e.seq for e in match.events if e.clock_s >= clock_s)
+
+
+def test_pressure_shift_latest_scope():
+    match = build_pressure_match()
+    # Just after 15:00 the latest complete window is w02, where the shift shows.
+    early = pressure_shift.run(match, pressure_shift.Params(
+        as_of_seq=_seq_at(match, 900), team_id="T1", scope="latest"))
+    assert "pressure.team:T1.shift1.minute" in displays(early)
+    # At 17:02 (122 s into w03) w03 is partial but classifiable: its rate is shown.
+    mid = displays(pressure_shift.run(match, pressure_shift.Params(
+        as_of_seq=_seq_at(match, 1022), team_id="T1", scope="latest")))
+    assert "pressure.team:T1.current_per_min" in mid and "pressure.team:T1.shift1.minute" in mid
+    # At the end the latest complete window is w03: no shift there, but the count stays.
+    late = displays(pressure_shift.run(match, pressure_shift.Params(
+        as_of_seq=match.events[-1].seq, team_id="T1", scope="latest")))
+    assert late["pressure.team:T1.shifts"] == "1"
+    assert not any(k.startswith("pressure.team:T1.shift1.") for k in late)
+
+
+def test_control_vs_chaos_latest_scope():
+    match = build_pressure_match()
+    last = _seq_at(match, 1022)  # w03 partial with 122 s of play
+
+    def keys(scope):
+        result = control_vs_chaos.run(match, control_vs_chaos.Params(as_of_seq=last,
+                                                                      scope=scope))
+        return sorted({".".join(f.evidence_id.split(".")[1:3]) for f in result.facts
+                       if f.evidence_id.startswith("window.p")})
+
+    assert keys("all") == ["p1.w00", "p1.w01", "p1.w02", "p1.w03"]
+    assert keys("latest") == ["p1.w02", "p1.w03"]  # latest complete + current partial
 
 
 # --- key_moments -----------------------------------------------------------------

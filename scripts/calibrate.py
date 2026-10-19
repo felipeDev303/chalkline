@@ -13,7 +13,17 @@ import statistics
 import sys
 from pathlib import Path
 
+from detector_eval import (
+    DEV_SEEDS,
+    TEST_SEEDS,
+    WINDOW_TOLERANCE,
+    load,
+    score_chaos,
+    score_shifts,
+)
+
 from pitchside.events.schema import SCHEMA_VERSION
+from pitchside.metrics.pressure_shift import THRESHOLDS as PRESSURE_THRESHOLDS
 from pitchside.simulator import simulate_match
 from pitchside.simulator.realism import (
     CALIBRATION_SEEDS,
@@ -51,11 +61,70 @@ def _known_limitations(mean_pass_length_m: float) -> str:
 - No corners: a ball out over the goal line is always a goal kick.
 - Mean pass length is {mean_pass_length_m:.1f} m over the robustness seeds, slightly
   long for professional football (typically around 20 m).
-- Cross-OS byte identity is designed in (one Mersenne Twister stream, only IEEE-exact
+- pressure_shift compares 5-minute windows of a few pressures each, so counting noise
+  limits it: it finds clear increases in pressing but almost never a drop, which is
+  smaller than its absolute threshold (see recall by cause above).
+- Planted regimes change only pressing intensity; other tactics (pace, width, line
+  height) are not simulated yet.
+- Cross-OS byte identity is designed in (seeded Mersenne Twister streams, only IEEE-exact
   arithmetic and `math.sqrt`, no libm transcendentals) but is only proven by the
   golden SHA-256 test. If Windows and Linux ever produce different bytes, the hash
   from Linux CI is canonical.
 """
+
+
+FP_PER_MATCH_BEFORE_STAGE_B = 1.2  # pressure_shift on regime-free matches, seeds 0-199
+
+
+def _detector_section() -> str:
+    data = load(TEST_SEEDS)
+    s = score_shifts(data, PRESSURE_THRESHOLDS["min_delta_per_min"],
+                     PRESSURE_THRESHOLDS["min_relative_change"])
+    chaos = score_chaos(data)
+    treated = sum(1 for d in data if not d.truth.control_group)
+    lines = [
+        "## Detector evaluation (planted regimes)",
+        "",
+        "Simulated matches carry planted pressing changes (ground truth in "
+        "`<match>.truth.json`, never in the event stream): seeded spells of pressing "
+        "harder or dropping off, and a trailing team pressing harder from 60'. Seeds "
+        "divisible by 5 are a control group with no regimes.",
+        "",
+        f"Thresholds were tuned on dev seeds {_seeds(DEV_SEEDS)} with "
+        "`scripts/tune_detectors.py` (rule: best F1 with at most 1.0 false positive per "
+        f"control match). Reported here on test seeds {_seeds(TEST_SEEDS)}, never used "
+        f"for tuning: {treated} treated and {s.control_matches} control matches. A "
+        "detection is a hit if it has the same team and direction as a planted change "
+        f"within +/-{WINDOW_TOLERANCE} window.",
+        "",
+        "| pressure_shift | Value |",
+        "|---|---|",
+        f"| thresholds | delta >= {PRESSURE_THRESHOLDS['min_delta_per_min']:g}/min, "
+        f"relative >= {PRESSURE_THRESHOLDS['min_relative_change']:g} |",
+        f"| planted changes / detections (treated) | {s.planted} / {s.detections} |",
+        f"| precision | {s.precision:.3f} |",
+        f"| recall | {s.recall:.3f} |",
+        f"| F1 | {s.f1:.3f} |",
+        f"| false positives per control match | {s.fp_per_control_match:.2f} "
+        f"(before stage B: {FP_PER_MATCH_BEFORE_STAGE_B:g}) |",
+        "",
+        "| Recall by cause | Planted | Hit | Recall |",
+        "|---|---|---|---|",
+    ]
+    for cause in sorted(s.planted_by_cause):
+        n, hit = s.planted_by_cause[cause], s.hits_by_cause[cause]
+        lines.append(f"| {cause} | {n} | {hit} | {hit / n:.3f} |")
+    lines += [
+        "",
+        "| control_vs_chaos (treated matches) | Windows | Chaos | Chaos rate |",
+        "|---|---|---|---|",
+        f"| inside a planted high-pressure spell | {chaos.inside_windows} | "
+        f"{chaos.inside_chaos} | {chaos.inside_rate:.3f} |",
+        f"| outside | {chaos.outside_windows} | {chaos.outside_chaos} | "
+        f"{chaos.outside_rate:.3f} |",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _fmt(metric: str, value: float) -> str:
@@ -130,9 +199,12 @@ def main() -> int:
         )
 
     mean_pass_length = statistics.fmean(row["mean_pass_length_m"] for row in robustness)
-    report = "\n".join(
-        ["\n".join(lines) + "\n", QUALITATIVE_REVIEW, _known_limitations(mean_pass_length)]
-    )
+    report = "\n".join([
+        "\n".join(lines) + "\n",
+        _detector_section(),
+        QUALITATIVE_REVIEW,
+        _known_limitations(mean_pass_length),
+    ])
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(report.encode())
     print(report)

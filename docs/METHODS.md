@@ -156,13 +156,18 @@ this document and the code disagree.
   completion < `chaos_completion_pct`; else **control** if the dominant team's possession
   share >= `control_share_pct` and turnovers/min <= `control_turnovers_per_min`; else
   **contested**. Windows are classified once they have events and `min_window_s` of play.
+- **Scope:** `latest` returns the most recent complete window plus the current partial
+  window when it can be classified; `all` returns every classified window (about 9 facts
+  each). Both include the match-level state shares and rhythm.
 - **Thresholds:** `min_window_s` = 120, `min_window_passes` = 5 (completion shown),
   `control_share_pct` = 56, `control_turnovers_per_min` = 1.2,
   `chaos_turnovers_per_min` = 2.0, `chaos_completion_pct` = 70. Chosen from 3,911
   eligible windows over simulated seeds 0-199 so that 25% are control, 51% contested and
   24% chaos.
-- **Caveats:** thresholds not validated against ground truth yet (planned: simulator
-  tactical regimes with labels); the current window is partial.
+- **Caveats:** thresholds are percentile-based, not tuned against ground truth. With
+  planted regimes, windows inside a planted high-pressure spell are chaos more often
+  than windows outside (rates in `docs/data/CALIBRATION.md`); on the dev seeds the split
+  is 22% / 52% / 26%. The current window is partial.
 - **Cannot tell:** why a window was chaotic; quality of play in a "controlled" window.
 
 ### `pressure_shift`
@@ -171,12 +176,21 @@ this document and the code disagree.
   consecutive complete 5-minute windows (they may straddle half time).
 - **Formula:** shift if |after - before| >= `min_delta_per_min` and
   |after - before| >= `min_relative_change` x before.
-- **Thresholds:** `min_delta_per_min` = 1.6, `min_relative_change` = 0.5,
-  `min_complete_windows` = 2. 1.6/min lies between the 95th and 99th percentile of
-  window-to-window changes in simulated matches, which contain no planned shifts, so on
-  those matches every detection is a false positive: 1.2 per match on average over seeds
-  0-199 (both teams), and 74 of the 200 matches have none.
-- **Caveats:** thresholds not validated against ground truth yet.
+- **Scope:** `latest` returns the team's average, latest complete-window rate and shift
+  count, the shift only if it shows in the latest complete window, and the current
+  partial window's rate when it has `min_window_s` of play; `all` returns every shift.
+  Shifts are numbered over the whole match, so `shift3` has the same id in both scopes.
+- **Thresholds:** `min_delta_per_min` = 1.6, `min_relative_change` = 0.25,
+  `min_complete_windows` = 2.
+- **Validation:** simulated matches carry planted pressing changes (ground truth in a
+  `.truth.json` sidecar that metrics never read). Thresholds were tuned on dev seeds
+  0-99 by `scripts/tune_detectors.py` with a fixed rule: best F1 among settings with at
+  most 1.0 false positive per control-group match (no planted regimes). The lower
+  threshold with the best F1 (0.8/min) produced about 9 false "tactical changes" per
+  match, unusable for live commentary. Precision, recall by cause and false positives
+  on untouched test seeds 200-399 are in `docs/data/CALIBRATION.md`: increases are
+  found, drops in pressing mostly are not, since they are smaller than the threshold.
+- **Caveats:** says the rate changed, not why; misses most drops in pressing.
 - **Cannot tell:** the cause of a shift (tactics, score, fatigue, where the ball was).
 
 ### `key_moments`

@@ -17,12 +17,16 @@ built for the Microsoft × Premier League *Inside the Game* hackathon.
     uv sync
     uv run pytest -q
 
-    # one synthetic match: line 1 metadata, then one event per line
+    # one synthetic match: line 1 metadata, then one event per line, plus the planted
+    # tactical regimes as ground truth in data/match_42.truth.json (never read by metrics)
     uv run python -m pitchside.simulator --seed 42 --out data/match_42.jsonl
 
-    # realism targets over seeds 0-19 + long-run margins over 200 seeds (~10 s)
+    # realism targets + detector evaluation on held-out seeds (~30 s)
     # writes docs/data/CALIBRATION.md
     uv run python scripts/calibrate.py
+
+    # re-tune detector thresholds, on dev seeds 0-99 only
+    uv run python scripts/tune_detectors.py
 
 Same seed, same bytes, on any OS. Current calibration: [docs/data/CALIBRATION.md](docs/data/CALIBRATION.md).
 

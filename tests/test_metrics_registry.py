@@ -96,7 +96,7 @@ def test_bad_calls_raise_tool_errors(match):
         call("match_summary", match, {"as_of_seq": last + 1})
     assert err.value.code == "as_of_out_of_range"
     with pytest.raises(ToolError) as err:
-        call("pressure_shift", match, {"as_of_seq": last, "team_id": "T99"})
+        call("pressure_shift", match, {"as_of_seq": last, "team_id": "T99", "scope": "all"})
     assert err.value.code == "unknown_team"
 
 
@@ -112,6 +112,15 @@ def test_schemas_are_strict():
     by_name = {s["name"]: s["parameters"]["properties"] for s in schemas}
     assert by_name["pass_profile"]["subject"]["enum"] == ["team", "player"]
     assert by_name["key_moments"]["limit"]["enum"] == [5, 10, 20]
+    assert by_name["control_vs_chaos"]["scope"]["enum"] == ["latest", "all"]
+    assert by_name["pressure_shift"]["scope"]["enum"] == ["latest", "all"]
+
+
+def test_latest_scope_is_much_smaller(match):
+    last = match.events[-1].seq
+    full = call("control_vs_chaos", match, {"as_of_seq": last, "scope": "all"})
+    latest = call("control_vs_chaos", match, {"as_of_seq": last, "scope": "latest"})
+    assert len(latest.facts) < len(full.facts) / 5
 
 
 def _section(text: str, tool: str) -> str:

@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
 from statistics import fmean
+from typing import Annotated, Literal
+
+from pydantic import Field
 
 from pitchside.events.match import Match
 from pitchside.metrics._timeline import (
@@ -48,11 +51,32 @@ THRESHOLDS: dict[str, float] = {
 }
 OPEN_PLAY_TURNOVERS = frozenset({"interception", "tackle"})
 STATES = ("control", "contested", "chaos")
-CAVEAT_UNVALIDATED = "Thresholds not validated against ground truth yet."
+CAVEAT_THRESHOLDS = (
+    "Thresholds are percentile-based and not tuned against ground truth; in simulated "
+    "matches, windows inside planted high-pressure spells are classified chaos more often "
+    "(docs/data/CALIBRATION.md)."
+)
+
+
+Scope = Literal["latest", "all"]
+SCOPE_DESCRIPTION = (
+    "'latest': only the most recent complete window plus the current partial one (if it "
+    "can be classified); 'all': every classified window so far."
+)
 
 
 class Params(ToolParams):
-    pass
+    scope: Annotated[Scope, Field(description=SCOPE_DESCRIPTION)]
+
+
+def latest_or_all(eligible: list[WindowStats], scope: Scope) -> list[WindowStats]:
+    if scope == "all":
+        return eligible
+    complete = [s for s in eligible if s.window.complete]
+    chosen = complete[-1:]
+    if eligible and not eligible[-1].window.complete:
+        chosen.append(eligible[-1])
+    return chosen
 
 
 @dataclass(frozen=True)
@@ -182,9 +206,10 @@ def run(match: Match, params: Params) -> ToolResult:
     v = view(match, params.as_of_seq)
     stats = window_stats(v)
     eligible = [s for s in stats if s.eligible]
+    shown = latest_or_all(eligible, params.scope)
     facts: list[Fact] = []
     cannot_tell: list[str] = []
-    for s in eligible:
+    for s in shown:
         facts += window_facts(s, f"window.{window_key(s.window)}")
     if eligible:
         current = eligible[-1]
@@ -209,7 +234,7 @@ def run(match: Match, params: Params) -> ToolResult:
                           fmean(p.passes for p in poss), "decimal"))
 
     rows = []
-    for s in eligible[-20:]:
+    for s in shown[-20:]:
         (start_m, start_a), (end_m, end_a) = window_bounds(s.window)
         completion = s.completion_pct
         rows.append((window_key(s.window), f"{start_m}+{start_a}" if start_a else start_m,
@@ -230,7 +255,7 @@ def run(match: Match, params: Params) -> ToolResult:
             "control if one team holds most of the in-play possession with few turnovers, "
             "otherwise contested."
         ),
-        caveats=(CAVEAT_UNVALIDATED,
+        caveats=(CAVEAT_THRESHOLDS,
                  "Rates use the window's observed play, so the current window is partial."),
         cannot_tell=tuple(cannot_tell),
     )
