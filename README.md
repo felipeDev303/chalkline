@@ -17,5 +17,14 @@ built for the Microsoft × Premier League *Inside the Game* hackathon.
     uv sync
     uv run pytest -q
 
+    # one synthetic match: line 1 metadata, then one event per line
+    uv run python -m pitchside.simulator --seed 42 --out data/match_42.jsonl
+
+    # realism targets over seeds 0-19 + long-run margins over 200 seeds (~10 s)
+    # writes docs/data/CALIBRATION.md
+    uv run python scripts/calibrate.py
+
+Same seed, same bytes, on any OS. Current calibration: [docs/data/CALIBRATION.md](docs/data/CALIBRATION.md).
+
 ## License
 MIT. See NOTICE.md for attributions.

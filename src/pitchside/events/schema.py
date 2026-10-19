@@ -93,12 +93,26 @@ class Tackle(EventBase):
 
 
 class Pressure(EventBase):
+    """A defender closing down the ball carrier.
+
+    `team_id` / `player_id` are the pressing team and player;
+    `target_player_id` is the pressed ball carrier (an opponent).
+    `location` is the ball position at pressure time (v0.1); it will become the
+    presser's own position once player tracking lands.
+    """
+
     type: Literal["pressure"] = "pressure"
     target_player_id: str
     duration_s: Annotated[float, Field(gt=0)]
 
 
 class PossessionChange(EventBase):
+    """The ball changes team.
+
+    `team_id` / `player_id` are the team and player gaining possession;
+    `from_team_id` is the team losing it.
+    """
+
     type: Literal["possession_change"] = "possession_change"
     from_team_id: str
     cause: Literal["tackle", "interception", "shot_end", "out_of_play", "foul", "other"]
