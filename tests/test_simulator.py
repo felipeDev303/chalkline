@@ -4,14 +4,15 @@ from statistics import fmean
 
 import pytest
 
+from pitchside.events.match import attacks_high_x, read_jsonl, to_jsonl_bytes, write_jsonl
 from pitchside.events.schema import MatchEventAdapter, MatchMetadata
-from pitchside.simulator import read_jsonl, simulate_match, to_jsonl_bytes, write_jsonl
+from pitchside.simulator import simulate_match
 from pitchside.simulator.__main__ import main
 from pitchside.simulator.realism import CALIBRATION_SEEDS, TARGETS, summarize
 
 # Update deliberately when the simulator's output changes, and rerun
 # scripts/calibrate.py so docs/data/CALIBRATION.md matches.
-GOLDEN_SEED_42_SHA256 = "aba714f1134c23a5ebdd8826c02f8acb1629dcee0f34ebe8354eaaf1e72e0d4b"
+GOLDEN_SEED_42_SHA256 = "9581d012b4614ed0cf15e86baa90082f098b5c75cc3eeb4228ec09ecfee5ad19"
 
 
 @pytest.fixture(scope="module")
@@ -80,6 +81,16 @@ def test_rosters_are_stable_across_matches():
         meta = simulate_match(seed).metadata
         for team in (meta.home, meta.away):
             assert squads.setdefault(team.team_id, team) == team
+
+
+def test_shots_go_towards_the_declared_goal():
+    """The metadata's attacking direction must agree with where teams actually shoot."""
+    for seed in range(5):
+        match = simulate_match(seed)
+        for e in match.events:
+            if e.type == "shot":
+                high = attacks_high_x(match.metadata, e.team_id, e.period)
+                assert (e.location.x > 52.5) == high, e.event_id
 
 
 def test_event_ids_are_unique(match42):

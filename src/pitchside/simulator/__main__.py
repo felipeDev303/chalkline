@@ -6,7 +6,8 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from pitchside.simulator import simulate_match, write_jsonl
+from pitchside.events.match import write_jsonl
+from pitchside.simulator import simulate_match
 
 
 def main(argv: Sequence[str] | None = None) -> int:

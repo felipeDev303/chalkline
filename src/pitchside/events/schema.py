@@ -1,6 +1,8 @@
 """Synthetic match event schema.
 
-Coordinates are metres on a 105x68 pitch, origin at bottom-left.
+Coordinates are metres on a 105x68 pitch, origin at bottom-left. Which goal each
+team attacks is declared in `MatchMetadata.home_attacks_high_x_in_period_1`; the
+teams swap ends at half time.
 Derived quantities (pass distance, ball speed, difficulty) are NOT stored here;
 they are computed deterministically in `pitchside.metrics`.
 """
@@ -12,7 +14,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 PITCH_LENGTH_M = 105.0
 PITCH_WIDTH_M = 68.0
 
@@ -43,7 +45,7 @@ class Team(Strict):
 
 
 class MatchMetadata(Strict):
-    schema_version: Literal["0.1.0"] = SCHEMA_VERSION
+    schema_version: Literal["0.2.0"] = SCHEMA_VERSION
     match_id: str
     seed: int
     home: Team
@@ -51,13 +53,15 @@ class MatchMetadata(Strict):
     competition: str
     venue: str
     kickoff_utc: datetime
+    # True: home attacks towards x = 105 in period 1 (and towards x = 0 in period 2).
+    home_attacks_high_x_in_period_1: bool
     synthetic: Literal[True] = True
 
 
 # --- events ---------------------------------------------------------------
 
 class EventBase(Strict):
-    schema_version: Literal["0.1.0"] = SCHEMA_VERSION
+    schema_version: Literal["0.2.0"] = SCHEMA_VERSION
     event_id: str
     match_id: str
     seq: Annotated[int, Field(ge=0)]           # monotonic per match
@@ -97,7 +101,7 @@ class Pressure(EventBase):
 
     `team_id` / `player_id` are the pressing team and player;
     `target_player_id` is the pressed ball carrier (an opponent).
-    `location` is the ball position at pressure time (v0.1); it will become the
+    `location` is the ball position at pressure time (schema 0.x); it will become the
     presser's own position once player tracking lands.
     """
 

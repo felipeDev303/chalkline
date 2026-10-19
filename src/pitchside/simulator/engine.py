@@ -11,8 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
-
+from pitchside.events.match import Match, attacks_high_x
 from pitchside.events.schema import (
     EventBase,
     MatchEvent,
@@ -62,18 +61,11 @@ FEET = ("right_foot", "left_foot", "other")
 SHOT_MISSES = ("blocked", "off_target", "saved", "post")
 
 
-class SimulatedMatch(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    metadata: MatchMetadata
-    events: tuple[MatchEvent, ...]
-
-
-def simulate_match(seed: int, params: SimParams = DEFAULT_PARAMS) -> SimulatedMatch:
+def simulate_match(seed: int, params: SimParams = DEFAULT_PARAMS) -> Match:
     rng = Rng(seed)
     metadata = _make_metadata(seed, rng)
     events = _Engine(metadata, rng, params).run()
-    return SimulatedMatch(metadata=metadata, events=events)
+    return Match(metadata=metadata, events=events)
 
 
 def _make_metadata(seed: int, rng: Rng) -> MatchMetadata:
@@ -88,6 +80,7 @@ def _make_metadata(seed: int, rng: Rng) -> MatchMetadata:
         competition=COMPETITION,
         venue=CLUBS[home][2],
         kickoff_utc=kickoff,
+        home_attacks_high_x_in_period_1=True,
     )
 
 
@@ -133,7 +126,7 @@ class _Engine:
     # --- helpers ----------------------------------------------------------
 
     def _point(self, side: int, p: XY) -> Point:
-        attacks_up = (side == 0) == (self.period == 1)
+        attacks_up = attacks_high_x(self.meta, self.teams[side].team_id, self.period)
         return to_point(p if attacks_up else flip(p))
 
     def _pid(self, side: int, slot: int) -> str:
