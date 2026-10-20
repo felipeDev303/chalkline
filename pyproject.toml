@@ -9,6 +9,10 @@ dependencies = [
   "duckdb>=1.1",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
+  "agent-framework-core==1.22.0",
+  "mcp==2.3.0",
+  "agent-framework-foundry==1.15.0",
+  "azure-identity>=1.26",
 ]
 
 [dependency-groups]
