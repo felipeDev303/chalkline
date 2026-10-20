@@ -17,6 +17,7 @@ from pitchside.metrics.control_vs_chaos import (
     WindowStats,
     window_bounds,
     window_key,
+    window_length_fact,
     window_stats,
 )
 
@@ -32,6 +33,13 @@ DESCRIPTION = (
 # Tuned on dev seeds 0-99 against planted pressing changes (scripts/tune_detectors.py):
 # best F1 among settings with at most 1.0 false positive per control-group match.
 # Evaluated on untouched seeds 200-399 in docs/data/CALIBRATION.md.
+# Absence of evidence is not evidence of absence: the detector is tuned to avoid false
+# alarms and misses most drops in pressing, so "no shift" must never become "pressing
+# stayed the same" in a narrative.
+CANNOT_TELL_NO_SHIFT = (
+    "That pressing stayed the same: no detected shift does not mean no change, "
+    "especially a drop in pressing, which this detector mostly misses."
+)
 CAVEAT_VALIDATION = (
     "Checked against planted pressing changes in simulated matches: it catches clear "
     "increases in pressing but misses most drops (docs/data/CALIBRATION.md)."
@@ -123,6 +131,7 @@ def run(match: Match, params: Params) -> ToolResult:
             latest = window_key(complete[-1].window)
             shown = [(k, s) for k, s in shown if window_key(s.window) == latest]
         facts += [
+            window_length_fact(),
             fact(f"{prefix}.mean_per_min", "Average pressures per minute",
                  fmean(s.pressures_per_min(team_id) for s in complete), "per_min"),
             fact(f"{prefix}.latest_per_min", "Pressures per minute, latest complete window",
@@ -131,6 +140,7 @@ def run(match: Match, params: Params) -> ToolResult:
         ]
         for k, shift in shown:
             facts += shift_facts(shift, f"{prefix}.shift{k}")
+        cannot_tell.append(CANNOT_TELL_NO_SHIFT)
     partial = stats[-1] if stats else None
     if partial is not None and not partial.window.complete and partial.eligible:
         facts.append(fact(f"{prefix}.current_per_min",

@@ -178,6 +178,12 @@ def window_bounds(w: Window) -> tuple[tuple[int, int], tuple[int, int]]:
     return mark(w.start_s), mark(w.end_s)
 
 
+def window_length_fact() -> Fact:
+    """The window length, so a narrative may quote it ("in the last 5 minutes")."""
+    return fact("window.length_min", "Length of each analysis window (minutes)",
+                WINDOW_S / 60, "count")
+
+
 def window_facts(stats: WindowStats, prefix: str) -> list[Fact]:
     """Facts that let a narrative quote one window: bounds, state, rates."""
     (start_m, start_a), (end_m, end_a) = window_bounds(stats.window)
@@ -207,7 +213,7 @@ def run(match: Match, params: Params) -> ToolResult:
     stats = window_stats(v)
     eligible = [s for s in stats if s.eligible]
     shown = latest_or_all(eligible, params.scope)
-    facts: list[Fact] = []
+    facts: list[Fact] = [window_length_fact()]
     cannot_tell: list[str] = []
     for s in shown:
         facts += window_facts(s, f"window.{window_key(s.window)}")

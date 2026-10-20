@@ -14,7 +14,7 @@ from pitchside.metrics._timeline import MatchView, match_minute, possessions, vi
 from pitchside.metrics.contract import Fact, Table, ToolParams, ToolResult, fact, minute_fact
 from pitchside.metrics.control_vs_chaos import window_bounds, window_stats
 from pitchside.metrics.pass_profile import hardest_completed, pass_difficulty, pass_distance_m
-from pitchside.metrics.pressure_shift import detect_shifts, shift_facts
+from pitchside.metrics.pressure_shift import CANNOT_TELL_NO_SHIFT, detect_shifts, shift_facts
 from pitchside.metrics.shot_profile import chance_quality
 
 TOOL_NAME = "key_moments"
@@ -196,5 +196,5 @@ def run(match: Match, params: Params) -> ToolResult:
         caveats=("Importance is a fixed editorial weighting, not a measure of match impact.",
                  "Pressure shifts catch clear increases in pressing but miss most drops; "
                  "swings use percentile-based thresholds (docs/data/CALIBRATION.md)."),
-        cannot_tell=() if candidates else ("No notable moment yet.",),
+        cannot_tell=(CANNOT_TELL_NO_SHIFT,) + (() if candidates else ("No notable moment yet.",)),
     )

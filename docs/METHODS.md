@@ -191,7 +191,12 @@ this document and the code disagree.
   on untouched test seeds 200-399 are in `docs/data/CALIBRATION.md`: increases are
   found, drops in pressing mostly are not, since they are smaller than the threshold.
 - **Caveats:** says the rate changed, not why; misses most drops in pressing.
-- **Cannot tell:** the cause of a shift (tactics, score, fatigue, where the ball was).
+- **Cannot tell:** the cause of a shift (tactics, score, fatigue, where the ball was);
+  **that pressing stayed the same.** The detector is conservative by design (tuned so
+  what goes on air is reliable), so the absence of a detected shift is no evidence of
+  no change. Every result past the minimum sample carries this in `cannot_tell`, and so
+  does `key_moments`, so a narrator never turns "nothing detected" into "kept its
+  intensity".
 
 ### `key_moments`
 

@@ -176,6 +176,18 @@ def test_pressure_shift_detects_planted_change():
     assert d["pressure.team:T1.latest_per_min"] == "2.4/min"
 
 
+def test_no_shift_is_never_evidence_of_no_change():
+    match = build_pressure_match((2, 2, 2, 2))  # flat pressing: nothing detected
+    last = match.events[-1].seq
+    for scope in ("latest", "all"):
+        result = pressure_shift.run(match, pressure_shift.Params(as_of_seq=last, team_id="T1",
+                                                                 scope=scope))
+        assert displays(result)["pressure.team:T1.shifts"] == "0"
+        assert pressure_shift.CANNOT_TELL_NO_SHIFT in result.cannot_tell
+    moments = key_moments.run(match, key_moments.Params(as_of_seq=last, limit=5))
+    assert pressure_shift.CANNOT_TELL_NO_SHIFT in moments.cannot_tell
+
+
 def test_pressure_shift_needs_both_conditions():
     # +1.4/min (0.4 -> 1.8) is under the 1.6 absolute threshold
     match = build_pressure_match((2, 2, 9, 9))

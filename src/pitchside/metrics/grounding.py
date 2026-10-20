@@ -55,14 +55,21 @@ IDIOM_EXEMPTIONS: dict[str, tuple[str, ...]] = {
 
 _LEFT = r"(?<![\w.,])"  # not glued to a word or to another number
 _RIGHT = r"(?![\w]|[.,]\d)"
+# A minus sign only after whitespace or an opening bracket: in "55'-60'" the dash is
+# a range, and 60' is read as a minute mark, not as -60.
+_SIGN = r"(?:(?<![^\s(\[])-)?"
 # 63' needs the mark; 45+2 is a minute with or without it.
 _MINUTE = (
     rf"{_LEFT}(?P<min>\d{{1,3}}\s?\+\s?\d{{1,2}}(?!\d)|\d{{1,3}}(?=\s?['’′]))\s?['’′]?"
 )
 _GROUP = rf"{_LEFT}(?P<grp>\d{{1,3}}(?:\s?[-–—]\s?\d{{1,3}})+){_RIGHT}"
+_DIGITS = {  # thousands groups or plain digits, then decimals; ordinal suffixes
+    "en": (r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", r"(?:st|nd|rd|th)?"),
+    "es": (r"(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?", r"(?:\.?[ºª]|er)?"),
+}
 _NUMBER = {
-    "en": rf"{_LEFT}(?P<num>-?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)(?:\.\d+)?)(?:st|nd|rd|th)?{_RIGHT}",
-    "es": rf"{_LEFT}(?P<num>-?(?:\d{{1,3}}(?:\.\d{{3}})+|\d+)(?:,\d+)?)(?:\.?[ºª]|er)?{_RIGHT}",
+    locale: rf"{_LEFT}(?P<num>{_SIGN}{digits}){ordinal}{_RIGHT}"
+    for locale, (digits, ordinal) in _DIGITS.items()
 }
 # Digits no valid pattern accepted (e.g. "83,6" in en): always unmatched. Digits
 # glued to letters (ids like T06) are not numbers and are skipped.
@@ -201,7 +208,15 @@ def validate(text: str, results: Sequence[ToolResult], locale: Locale) -> Ground
         raise ValueError(
             f"grounding uses facts from a single agent turn; got as_of_seq {sorted(as_of)}"
         )
-    index = _index([f for r in results for f in r.facts])
+    return validate_facts(text, [f for r in results for f in r.facts], locale)
+
+
+def validate_facts(text: str, facts: Sequence[Fact], locale: Locale) -> GroundingReport:
+    """Check `text` against exactly these facts (e.g. the ones a sentence cites).
+
+    The caller is responsible for the facts coming from a single agent turn.
+    """
+    index = _index(facts)
     unmatched: list[str] = []
     matched: list[str] = []
     tokens = extract_numbers(text, locale)

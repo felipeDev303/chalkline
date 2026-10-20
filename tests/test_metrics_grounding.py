@@ -131,6 +131,14 @@ def test_scoreline_matches_as_an_unordered_pair():
     assert validate("a 2-1 shape", [_result(FACTS.facts[2])], "en").unmatched_numbers == ("2-1",)
 
 
+def test_minute_ranges_are_two_minutes_not_a_negative_number():
+    tokens = extract_numbers("between 55'-60' and 60' - 65'", "en")
+    assert [(t.kind, t.key) for t in tokens] == [
+        ("minute", "55'"), ("minute", "60'"), ("minute", "60'"), ("minute", "65'")]
+    assert extract_numbers("a drop of -4.2/min", "en")[0].value == Decimal("-4.2")
+    assert extract_numbers("(-3)", "en")[0].value == Decimal("-3")
+
+
 def test_minute_marks():
     assert validate("at 63’ and in the 63rd minute", [FACTS], "en").ok
     assert validate("in minute 45+2 and at 45 + 2'", [FACTS], "en").ok
