@@ -13,6 +13,7 @@ dependencies = [
   "mcp==2.3.0",
   "agent-framework-foundry==1.15.0",
   "azure-identity>=1.26",
+  "azure-storage-blob>=12.31",
 ]
 
 [dependency-groups]

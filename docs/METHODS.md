@@ -261,7 +261,7 @@ this document and the code disagree.
 - **Thresholds:** `big_chance_quality` = 90 (about 2.5 per team per simulated match),
   `sequence_passes` = 10, `milestone_passes` = 50.
 - **Caveats:** importance is a fixed editorial weighting, not a measure of impact.
-- **Cannot tell:** moments that leave no event (a run that drags a defender away).
+- **Cannot tell:** off-ball runs that no pass used.
 
 ### `player_focus`
 
@@ -270,5 +270,23 @@ this document and the code disagree.
   the key moments where they are the passer, shooter or milestone owner, with those
   moments' facts.
 - **Thresholds:** `min_passes` = 15 (completion and mean difficulty), `moments_shown` = 5.
-- **Caveats:** off-ball work is invisible without tracking data.
+- **Caveats:** off-ball work is credited by `off_ball_credit`, not here.
 - **Cannot tell:** the player's influence on moments they did not touch.
+
+## Producer
+
+The producer agent (`api/producer.py`) decides which moments go on air during a
+replay. It is deterministic and causal: every `step_events` events it computes
+`key_moments` on the match cut there and considers only moments it has not seen. It
+airs one when:
+
+- its importance is at least `min_importance` (goals always qualify);
+- at least `gap_s` seconds of match time have passed since the last story, unless its
+  importance is at least `break_in_importance` (goals);
+- no story of the same kind for the same team aired in the last `repeat_s` seconds.
+
+Thresholds: `step_events` = 25, `min_importance` = 40, `break_in_importance` = 90,
+`gap_s` = 90, `repeat_s` = 300. Hardest pass and most threatening pass are "best so
+far" moments that keep changing as the match goes on, so they are left to recaps.
+Each story's instant headline is a template filled only with the story's fact displays;
+a test checks every kind in English and Spanish against grounding.

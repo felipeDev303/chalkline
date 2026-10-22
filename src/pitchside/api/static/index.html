@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pitchside</title>
+  <meta name="description" content="Explainable, verified match intelligence from synthetic football events.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Pitchside
+      <span class="tag" data-i18n="synthetic">synthetic league</span></div>
+    <div class="controls">
+      <label class="field"><span data-i18n="match">Match</span>
+        <select id="match"></select></label>
+      <div class="seg" id="persona" role="group" aria-label="Audience">
+        <button data-v="casual" data-i18n="casual">Casual fan</button>
+        <button data-v="analyst" data-i18n="analyst">Analyst</button>
+      </div>
+      <div class="seg" id="lang" role="group" aria-label="Language">
+        <button data-v="en">EN</button><button data-v="es">ES</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="compare">
+        <span data-i18n="compare">Side by side</span></label>
+      <label class="field"><span data-i18n="follow">Follow</span>
+        <select id="focus"><option value="" data-i18n="nobody">nobody</option></select></label>
+      <button class="ghost-btn" id="how" data-i18n="how">How it's measured</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage">
+      <div class="scoreboard">
+        <span class="team home" id="home-name"></span>
+        <span class="score"><b id="home-score">0</b><i>–</i><b id="away-score">0</b></span>
+        <span class="team away" id="away-name"></span>
+        <span class="clock" id="clock">1'</span>
+      </div>
+
+      <div class="pitch-wrap">
+        <svg id="pitch" viewBox="-3 -3 111 74" role="img" aria-label="Pitch with player positions">
+          <g class="lines">
+            <rect x="0" y="0" width="105" height="68"/>
+            <line x1="52.5" y1="0" x2="52.5" y2="68"/>
+            <circle cx="52.5" cy="34" r="9.15"/>
+            <rect x="0" y="13.84" width="16.5" height="40.32"/>
+            <rect x="88.5" y="13.84" width="16.5" height="40.32"/>
+            <rect x="0" y="24.84" width="5.5" height="18.32"/>
+            <rect x="99.5" y="24.84" width="5.5" height="18.32"/>
+            <rect x="-2" y="30.34" width="2" height="7.32"/>
+            <rect x="105" y="30.34" width="2" height="7.32"/>
+          </g>
+          <line id="pass-line" class="pass"/>
+          <g id="scene"></g>
+          <g id="players"></g>
+          <circle id="ball" r="0.9"/>
+        </svg>
+        <div class="scene-card" id="scene-card" hidden>
+          <div class="scene-title" id="scene-title"></div>
+          <div class="seg small" id="scene-toggle">
+            <button data-v="with" data-i18n="with_run">With the run</button>
+            <button data-v="without" data-i18n="without_run">Without it</button>
+          </div>
+          <div class="meter"><span data-i18n="control_with">Receiver's control, with</span>
+            <div class="track"><div class="fill with" id="m-with"></div></div><b id="v-with"></b></div>
+          <div class="meter"><span data-i18n="control_without">…without the run</span>
+            <div class="track"><div class="fill without" id="m-without"></div></div><b id="v-without"></b></div>
+          <p class="fine" data-i18n="scene_note">Counterfactual: the runner moves only with their team's block; any defender who followed them goes back too.</p>
+          <button class="ghost-btn" id="scene-exit" data-i18n="back_live">Back to live</button>
+        </div>
+      </div>
+
+      <div class="replay">
+        <button id="play" class="play" aria-label="Play">▶</button>
+        <div class="scrub">
+          <input type="range" id="seq" min="0" max="0" value="0" aria-label="Replay position">
+          <div class="chapters" id="chapters"></div>
+        </div>
+        <select id="speed" aria-label="Speed">
+          <option value="1">1×</option><option value="4" selected>4×</option>
+          <option value="12">12×</option>
+        </select>
+        <button id="next" class="ghost-btn" data-i18n="next_story">Next story ⏭</button>
+      </div>
+
+      <div class="focus-card" id="focus-card" hidden></div>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <h2 data-i18n="on_air">On air</h2>
+        <p class="fine" data-i18n="on_air_note">Chosen live by the producer agent from what is known so far. Tap a story for the desk's verified explanation.</p>
+        <ol class="feed" id="feed"></ol>
+      </section>
+
+      <section class="panel desk" id="desk">
+        <h2 data-i18n="desk">The desk</h2>
+        <div id="desk-body"><p class="fine" data-i18n="desk_empty">Pick a story, ask a question or request a recap.</p></div>
+        <form class="ask" id="ask">
+          <input id="question" maxlength="300" data-i18n-ph="ask_ph" placeholder="Ask about the match so far…">
+          <button data-i18n="ask">Ask</button>
+          <button type="button" id="recap" class="ghost-btn" data-i18n="recap">Recap so far</button>
+        </form>
+      </section>
+
+      <section class="panel evidence" id="evidence" hidden></section>
+    </aside>
+  </main>
+
+  <dialog id="how-dialog">
+    <div id="how-body"></div>
+    <form method="dialog"><button class="ghost-btn" data-i18n="close">Close</button></form>
+  </dialog>
+
+  <footer class="foot" data-i18n="footer">All teams, players and matches are synthetic, generated by Pitchside's simulator. Every number on screen comes from a deterministic, tested tool.</footer>
+  <script src="app.js"></script>
+</body>
+</html>

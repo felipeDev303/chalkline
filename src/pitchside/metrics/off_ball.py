@@ -64,6 +64,8 @@ class Credit:
     control_with: float
     control_without: float
     moved_m: float
+    now_xy: XY = (0.0, 0.0)  # where the player was at the pass
+    without_xy: XY = (0.0, 0.0)  # where they would have been without their run
 
 
 def positions(frame: Frame) -> dict[str, XY]:
@@ -140,13 +142,14 @@ def pass_credits(events: Sequence[MatchEvent], index: int, metadata: MatchMetada
     for pid in sorted(own):
         move = own[pid]
         moved = math.hypot(*move)
+        without_xy = (now[pid][0] - move[0], now[pid][1] - move[1])
         if moved < MIN_RUN_M:
-            out.append(Credit(pid, 0.0, base, base, moved))
+            out.append(Credit(pid, 0.0, base, base, moved, now[pid], without_xy))
             continue
         # Without the run: moved with the block, not on their own; so did any
         # defender who went with them.
         counterfactual = dict(now)
-        counterfactual[pid] = (now[pid][0] - move[0], now[pid][1] - move[1])
+        counterfactual[pid] = without_xy
         for did, dmove in other.items():
             if (math.dist(now[did], now[pid]) <= FOLLOW_RADIUS_M
                     and math.hypot(*dmove) >= FOLLOW_MIN_MOVE_M):
@@ -154,7 +157,7 @@ def pass_credits(events: Sequence[MatchEvent], index: int, metadata: MatchMetada
         # Had the receiver not moved, the pass would have gone to where they were.
         target = (end[0] - move[0], end[1] - move[1]) if pid == receiver else end
         without = receiver_control(counterfactual, target)
-        out.append(Credit(pid, base - without, base, without, moved))
+        out.append(Credit(pid, base - without, base, without, moved, now[pid], without_xy))
     return sorted(out, key=lambda c: (-c.credit, c.player_id))
 
 
