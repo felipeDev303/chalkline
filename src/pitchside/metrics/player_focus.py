@@ -10,6 +10,7 @@ from pydantic import Field
 from pitchside.events.match import Match
 from pitchside.metrics._timeline import view
 from pitchside.metrics.contract import Fact, Table, ToolParams, ToolResult, fact
+from pitchside.metrics.expected_threat import pass_threat
 from pitchside.metrics.key_moments import all_moments, moment_ids, ranked
 from pitchside.metrics.pass_profile import pass_difficulty
 
@@ -51,6 +52,8 @@ def run(match: Match, params: Params) -> ToolResult:
         fact(f"{prefix}.tackles_won", "Tackles won", sum(1 for e in tackles if e.won), "count"),
         fact(f"{prefix}.pressures", "Pressures", sum(1 for e in mine if e.type == "pressure"),
              "count"),
+        fact(f"{prefix}.threat_added", "Expected threat added by completed passes",
+             sum(pass_threat(v.metadata, e) or 0.0 for e in passes), "xg"),
     ]
     cannot_tell: list[str] = []
     if len(passes) >= THRESHOLDS["min_passes"]:

@@ -57,12 +57,14 @@ CENTRE = (52.5, 34.0)
 
 def _team(n: int, name: str) -> Team:
     positions = ("GK", "DF", "MF", "FW")
+    surnames = ("Keeper", "Back", "Middle", "Forward")  # no digits: names are labels
     return Team(
         team_id=f"T{n}",
         name=name,
         short_name=name[:3].upper(),
         players=tuple(
-            Player(player_id=f"T{n}-{i}", name=f"Player {n}{i}", shirt_number=i, position=pos)
+            Player(player_id=f"T{n}-{i}", name=f"{name.split()[0]} {surnames[i - 1]}",
+                   shirt_number=i, position=pos)
             for i, pos in enumerate(positions, start=1)
         ),
     )

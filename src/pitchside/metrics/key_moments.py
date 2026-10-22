@@ -13,6 +13,9 @@ from pitchside.events.schema import MatchEvent
 from pitchside.metrics._timeline import MatchView, match_minute, possessions, view
 from pitchside.metrics.contract import Fact, Table, ToolParams, ToolResult, fact, minute_fact
 from pitchside.metrics.control_vs_chaos import window_bounds, window_stats
+from pitchside.metrics.expected_threat import pass_threat
+from pitchside.metrics.off_ball import THRESHOLDS as OFF_BALL_THRESHOLDS
+from pitchside.metrics.off_ball import decisive_runs, run_facts
 from pitchside.metrics.pass_profile import hardest_completed, pass_difficulty, pass_distance_m
 from pitchside.metrics.pressure_shift import CANNOT_TELL_NO_SHIFT, detect_shifts, shift_facts
 from pitchside.metrics.shot_profile import chance_quality
@@ -21,7 +24,8 @@ TOOL_NAME = "key_moments"
 DESCRIPTION = (
     "Ranked list of the most important moments so far (goals, big chances, swings "
     "between control and chaos, pressure shifts, long passing sequences, the hardest "
-    "completed pass, milestones such as a player's 50th pass). Each moment has its "
+    "completed pass, the pass that added the most expected threat, decisive off-ball "
+    "runs, milestones such as a player's 50th pass). Each moment has its "
     "minute, an importance score and the evidence ids behind it. Use it for recaps, "
     "highlights or to decide what to talk about."
 )
@@ -39,6 +43,9 @@ IMPORTANCE = {
     "swing": 50.0,
     "pressure_shift": 40.0,
     "hardest_pass": 35.0,
+    "threat_pass": 35.0,  # the completed pass that added the most expected threat
+    "decisive_run": 55.0,  # an off-ball run that made a pass into the final third
+    "decisive_runs_shown": 3,  # the strongest few, so they do not flood the list
     "milestone": 20.0,
     "sequence_cap": 90.0,  # a long sequence never outranks a goal
 }
@@ -148,6 +155,24 @@ def all_moments(v: MatchView) -> list[Moment]:
             fact(f"moment:hardest_pass@{p.seq}.distance_m", "Pass length",
                  pass_distance_m(p), "m"),
         ], team_id=p.team_id, player_id=p.player_id))
+
+    threats = [(p, pass_threat(meta, p)) for p in passes if p.outcome == "complete"]
+    if threats:
+        p, delta = max(threats, key=lambda pd: (pd[1] or 0.0, -pd[0].seq))
+        already = bool(hardest) and hardest[0].seq == p.seq  # same pass, one moment
+        if delta and delta > 0 and not already:
+            out.append(_moment("threat_pass", p, IMPORTANCE["threat_pass"], [
+                fact(f"moment:threat_pass@{p.seq}.xt_added", "Expected threat added",
+                     delta, "xg"),
+            ], team_id=p.team_id, player_id=p.player_id))
+
+    runs = decisive_runs(v.events, meta, OFF_BALL_THRESHOLDS["decisive_credit"])
+    runs = sorted(runs, key=lambda r: (-r.runner.credit, r.pass_event.seq))
+    for r in runs[:int(IMPORTANCE["decisive_runs_shown"])]:
+        p = r.pass_event
+        out.append(Moment("decisive_run", p.seq, IMPORTANCE["decisive_run"], p.team_id,
+                          r.runner.player_id,
+                          tuple(run_facts(r, f"moment:decisive_run@{p.seq}", meta))))
 
     counts: dict[str, int] = {}
     for p in passes:

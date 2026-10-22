@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 PITCH_LENGTH_M = 105.0
 PITCH_WIDTH_M = 68.0
 
@@ -45,7 +45,7 @@ class Team(Strict):
 
 
 class MatchMetadata(Strict):
-    schema_version: Literal["0.2.0"] = SCHEMA_VERSION
+    schema_version: Literal["0.3.0"] = SCHEMA_VERSION
     match_id: str
     seed: int
     home: Team
@@ -58,10 +58,24 @@ class MatchMetadata(Strict):
     synthetic: Literal[True] = True
 
 
+# --- positions --------------------------------------------------------------
+
+class PlayerXY(Strict):
+    player_id: str
+    x: Annotated[float, Field(ge=0, le=PITCH_LENGTH_M)]
+    y: Annotated[float, Field(ge=0, le=PITCH_WIDTH_M)]
+
+
+class Frame(Strict):
+    """Where every player on the pitch stood when the event happened (absolute metres)."""
+
+    players: tuple[PlayerXY, ...]
+
+
 # --- events ---------------------------------------------------------------
 
 class EventBase(Strict):
-    schema_version: Literal["0.2.0"] = SCHEMA_VERSION
+    schema_version: Literal["0.3.0"] = SCHEMA_VERSION
     event_id: str
     match_id: str
     seq: Annotated[int, Field(ge=0)]           # monotonic per match
@@ -70,6 +84,8 @@ class EventBase(Strict):
     team_id: str
     player_id: str | None
     location: Point
+    # Positions of all players at the event; None when the feed has no tracking.
+    frame: Frame | None = None
 
 
 class Pass(EventBase):

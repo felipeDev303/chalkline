@@ -45,7 +45,7 @@ CAVEAT_VALIDATION = (
     "increases in pressing but misses most drops (docs/data/CALIBRATION.md)."
 )
 THRESHOLDS: dict[str, float] = {
-    "min_delta_per_min": 1.6,  # absolute change in pressures per minute, at least
+    "min_delta_per_min": 1.8,  # absolute change in pressures per minute, at least
     "min_relative_change": 0.25,  # and at least this fraction of the earlier rate
     "min_complete_windows": 2,  # rates need this many complete windows
 }

@@ -18,7 +18,7 @@ construction, whatever as_of_seq the model asks for.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import agent_framework as af
@@ -72,11 +72,17 @@ def cut(match: Match, as_of_seq: int) -> Match:
 
 # --- messages between executors -------------------------------------------------
 
+def tokens_used(response: af.AgentResponse) -> int:
+    """Total tokens of an agent run, across its tool-calling round trips."""
+    return int((response.usage_details or {}).get("total_token_count") or 0)
+
+
 @dataclass(frozen=True)
 class Analysis:
     request: TurnRequest
     results: tuple[ToolResult, ...]
     notes: tuple[str, ...] = ()
+    tokens: int = 0  # running total for the turn
 
 
 @dataclass(frozen=True)
@@ -97,7 +103,7 @@ def evidence_only(analysis: Analysis, attempts: int, failure: str) -> Insight:
     facts: list[Fact] = [f for r in analysis.results for f in r.facts][:EVIDENCE_ONLY_FACTS]
     return Insight(request=analysis.request, status="evidence_only", sentences=(),
                    evidence=tuple(facts), results=analysis.results, attempts=attempts,
-                   failure=failure, notes=analysis.notes)
+                   failure=failure, notes=analysis.notes, tokens=analysis.tokens)
 
 
 # --- executors -------------------------------------------------------------------
@@ -112,6 +118,7 @@ class AnalystExecutor(af.Executor):
         visible = cut(self.match, request.as_of_seq)
         notes: list[str] = []
         results: list[ToolResult] = []
+        tokens = 0
         try:
             label, response = await run_on_chain(
                 self.models,
@@ -121,6 +128,7 @@ class AnalystExecutor(af.Executor):
             )
             if label != self.models[0][0]:
                 notes.append(f"analyst ran on fallback model '{label}'")
+            tokens = tokens_used(response)
             results = [r for r in extract_tool_results(response.messages)
                        if r.as_of_seq == request.as_of_seq]
         except ModelChainExhausted as err:
@@ -129,7 +137,7 @@ class AnalystExecutor(af.Executor):
             notes.append("analyst returned no usable results; using default evidence")
             results = default_results(visible, request.as_of_seq)
         unique = {r.model_dump_json(): r for r in results}  # drop identical repeat calls
-        await ctx.send_message(Analysis(request, tuple(unique.values()), tuple(notes)))
+        await ctx.send_message(Analysis(request, tuple(unique.values()), tuple(notes), tokens))
 
 
 class NarratorExecutor(af.Executor):
@@ -138,9 +146,10 @@ class NarratorExecutor(af.Executor):
         self.match, self.models = match, models
 
     async def _write(self, analysis: Analysis, attempt: int, feedback: Sequence[str],
-                     ctx: af.WorkflowContext[Draft, Insight]) -> None:
+                     ctx: af.WorkflowContext[Draft, Insight],
+                     previous: Narrative | None = None) -> None:
         prompt = narrator_prompt(analysis.request, self.match.metadata, analysis.results,
-                                 feedback)
+                                 feedback, previous.model_dump_json() if previous else None)
         try:
             label, response = await run_on_chain(
                 self.models,
@@ -154,9 +163,10 @@ class NarratorExecutor(af.Executor):
             await ctx.yield_output(evidence_only(
                 analysis, attempt, f"narrator unavailable: {type(err).__name__}: {err}"))
             return
+        analysis = replace(analysis, tokens=analysis.tokens + tokens_used(response))
         note = f"narrator ran on fallback model '{label}'"
         if label != self.models[0][0] and note not in analysis.notes:
-            analysis = Analysis(analysis.request, analysis.results, (*analysis.notes, note))
+            analysis = replace(analysis, notes=(*analysis.notes, note))
         await ctx.send_message(Draft(analysis, narrative, label, attempt))
 
     @af.handler
@@ -168,8 +178,9 @@ class NarratorExecutor(af.Executor):
         analysis = retry.draft.analysis
         rejected = (f"verifier rejected attempt {retry.draft.attempt}: "
                     + " | ".join(retry.verdict.feedback))
-        analysis = Analysis(analysis.request, analysis.results, (*analysis.notes, rejected))
-        await self._write(analysis, retry.draft.attempt + 1, retry.verdict.feedback, ctx)
+        analysis = replace(analysis, notes=(*analysis.notes, rejected))
+        await self._write(analysis, retry.draft.attempt + 1, retry.verdict.feedback, ctx,
+                          previous=retry.draft.narrative)
 
 
 class VerifierExecutor(af.Executor):
@@ -194,6 +205,7 @@ class VerifierExecutor(af.Executor):
                 attempts=draft.attempt,
                 model=draft.model,
                 notes=analysis.notes,
+                tokens=analysis.tokens,
             ))
         elif draft.attempt < MAX_ATTEMPTS:
             await ctx.send_message(Retry(draft, verdict), target_id="narrator")

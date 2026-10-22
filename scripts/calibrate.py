@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import statistics
 import sys
+from collections import Counter
 from pathlib import Path
 
 from detector_eval import (
@@ -21,8 +22,11 @@ from detector_eval import (
     score_chaos,
     score_shifts,
 )
+from off_ball_eval import score as score_off_ball
+from xt_eval import calibrate as calibrate_xt
 
 from pitchside.events.schema import SCHEMA_VERSION
+from pitchside.metrics import off_ball
 from pitchside.metrics.pressure_shift import THRESHOLDS as PRESSURE_THRESHOLDS
 from pitchside.simulator import simulate_match
 from pitchside.simulator.realism import (
@@ -127,6 +131,76 @@ def _detector_section() -> str:
     return "\n".join(lines)
 
 
+def _xt_section() -> str:
+    c = calibrate_xt([simulate_match(seed) for seed in TEST_SEEDS])
+    lines = [
+        "## Expected threat (xT) calibration",
+        "",
+        f"Grid fitted on dev seeds {_seeds(DEV_SEEDS)} by `scripts/fit_xt.py`; evaluated here "
+        f"on test seeds {_seeds(TEST_SEEDS)}. Prediction: xT of the zone where a pass or "
+        "shot starts. Outcome: that possession ends in a goal for the team on the ball.",
+        "",
+        "| Actions | Goal rate | Brier | Brier (base rate) | Brier skill | ECE |",
+        "|---|---|---|---|---|---|",
+        f"| {c.n} | {c.base_rate:.4f} | {c.brier:.5f} | {c.brier_base:.5f} | "
+        f"{c.brier_skill:.4f} | {c.ece:.4f} |",
+        "",
+        "| Decile | Mean predicted | Observed | Actions |",
+        "|---|---|---|---|",
+    ]
+    lines += [f"| {i} | {pred:.4f} | {obs:.4f} | {k} |"
+              for i, (pred, obs, k) in enumerate(c.bins, start=1)]
+    lines += ["", "Goals are rare per action, so the Brier skill over the base rate is "
+                  "small; calibration (ECE, deciles) is what makes the values quotable.", ""]
+    return "\n".join(lines)
+
+
+def _off_ball_section() -> str:
+    s = score_off_ball(TEST_SEEDS)
+
+    def rate(c: Counter, k: str) -> str:
+        return f"{c[k] / s.n[k]:.2f}" if s.n[k] else "-"
+
+    eff = ("free", "decoy")
+    n_eff = sum(s.n[k] for k in eff)
+
+    def pooled(c: Counter) -> str:
+        return f"{sum(c[k] for k in eff) / n_eff:.2f}" if n_eff else "-"
+
+    precision = s.flagged_true / s.flagged if s.flagged else 0.0
+    recall = s.flagged_true / s.planted_effective if s.planted_effective else 0.0
+    lines = [
+        "## Off-ball attribution (planted runs)",
+        "",
+        "Treated matches plant off-ball runs, labelled in the truth sidecar: free direct "
+        "runs into space, decoy runs that drag the receiver's marker away (the runner does "
+        "not receive), and tracked direct runs (the marker follows; no space created). The "
+        "engine (`metrics/off_ball.py`) never reads the labels; its constants were chosen on "
+        f"dev seeds. Test seeds {_seeds(TEST_SEEDS)}: {s.matches} treated matches.",
+        "",
+        "Share of runs whose runner each rule credits first (higher is better for free and "
+        "decoy runs; lower is better for tracked runs, which created no space):",
+        "",
+        "| Runs | n | Engine | Credit the recipient | Credit whoever moved most |",
+        "|---|---|---|---|---|",
+    ]
+    for k, label in (("free", "free direct"), ("decoy", "decoy"), ("tracked", "tracked")):
+        lines.append(f"| {label} | {s.n[k]} | {rate(s.engine, k)} | {rate(s.recipient, k)} | "
+                     f"{rate(s.most_moved, k)} |")
+    lines += [
+        f"| **effective (free + decoy)** | {n_eff} | **{pooled(s.engine)}** | "
+        f"{pooled(s.recipient)} | {pooled(s.most_moved)} |",
+        "",
+        f"- Runner's credit separates effective from tracked runs with AUC **{s.auc:.3f}**.",
+        f"- Decisive runs (top credit >= {off_ball.THRESHOLDS['decisive_credit']:g}, any "
+        f"pass): {s.flagged / max(s.matches, 1):.1f} per match, precision "
+        f"**{precision:.2f}** against planted effective runs, recall **{recall:.2f}**. "
+        "Threshold rule (dev seeds): best recall with precision >= 0.70.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _fmt(metric: str, value: float) -> str:
     return f"{value:.3f}" if metric == "pass_completion" else f"{value:.1f}"
 
@@ -202,6 +276,8 @@ def main() -> int:
     report = "\n".join([
         "\n".join(lines) + "\n",
         _detector_section(),
+        _xt_section(),
+        _off_ball_section(),
         QUALITATIVE_REVIEW,
         _known_limitations(mean_pass_length),
     ])

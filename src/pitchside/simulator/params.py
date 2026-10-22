@@ -99,5 +99,21 @@ class SimParams(BaseModel):
     trailing_from_s: float = 900.0  # ...from 60' (15:00 of period 2)
     max_pressure_prob: float = 0.9
 
+    # --- positions and planted off-ball runs (truth in <match>.truth.json) ---
+    position_jitter_m: float = 1.0  # noise on every player's position in a frame
+    run_prob: float = 0.04  # per on-ball step from the middle third on, if no run is active
+    run_min_x: float = 35.0  # ball at least this far up (attacking frame)
+    decoy_prob: float = 0.35  # otherwise a direct run
+    tracked_prob: float = 0.4  # direct runs where the marker follows the runner
+    run_forward_m: Range = (8.0, 14.0)
+    run_lateral_m: Range = (2.0, 6.0)
+    run_pass_prob: float = 0.75  # the carrier plays the run (runner, or decoy's beneficiary)
+    run_pass_noise_m: float = 2.0
+    marker_follow_m: float = 1.5  # a following marker stays this far goal-side
+    # Pass completion rises with space at the destination (distance to the nearest
+    # defender): a swing of pass_space_bonus between no space and space_ref_m or more.
+    space_ref_m: float = 8.0
+    pass_space_bonus: float = 0.14
+
 
 DEFAULT_PARAMS = SimParams()

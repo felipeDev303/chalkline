@@ -10,8 +10,10 @@ from pydantic import ValidationError
 from pitchside.events.match import Match
 from pitchside.metrics import (
     control_vs_chaos,
+    expected_threat,
     key_moments,
     match_summary,
+    off_ball,
     pass_profile,
     player_focus,
     pressure_shift,
@@ -19,8 +21,8 @@ from pitchside.metrics import (
 )
 from pitchside.metrics.contract import ToolError, ToolResult, ToolSpec
 
-MODULES = (match_summary, pass_profile, shot_profile, control_vs_chaos, pressure_shift,
-           key_moments, player_focus)
+MODULES = (match_summary, pass_profile, shot_profile, expected_threat, off_ball,
+           control_vs_chaos, pressure_shift, key_moments, player_focus)
 TOOLS: dict[str, ToolSpec] = {
     m.TOOL_NAME: ToolSpec(name=m.TOOL_NAME, description=m.DESCRIPTION, params=m.Params,
                           run=m.run)

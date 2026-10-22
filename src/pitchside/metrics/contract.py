@@ -24,7 +24,7 @@ from pitchside.events.match import Match
 
 Unit = Literal[
     "count", "decimal", "pct", "share", "m", "km/h", "score", "per_min", "seconds", "minute",
-    "formation", "scoreline", "label",
+    "xg", "formation", "scoreline", "label",
 ]
 # Units whose value is a string shown as is. `label` is words only (a window state);
 # digit groups must be a `formation` (ordered) or a `scoreline` (unordered pair).
@@ -34,11 +34,11 @@ TEXT_UNITS = frozenset({"formation", "scoreline", "label"})
 # `share` a split of a whole (possession), `score` a 0-100 index.
 _DECIMALS: dict[str, int] = {
     "count": 0, "decimal": 1, "pct": 1, "share": 0, "m": 1, "km/h": 1, "score": 0,
-    "per_min": 1, "seconds": 1,
+    "per_min": 1, "seconds": 1, "xg": 2,
 }
 _SUFFIX: dict[str, str] = {
     "count": "", "decimal": "", "pct": "%", "share": "%", "m": " m", "km/h": " km/h",
-    "score": "", "per_min": "/min", "seconds": " s",
+    "score": "", "per_min": "/min", "seconds": " s", "xg": "",
 }
 EVIDENCE_ID_PATTERN = r"^[a-z][a-z_]*[.:][A-Za-z0-9_.:@+\-]+$"
 MINUTE_DISPLAY_RE = re.compile(r"^\d{1,3}(\+\d{1,2})?'$")

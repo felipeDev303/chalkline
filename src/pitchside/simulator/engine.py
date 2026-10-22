@@ -14,10 +14,12 @@ from typing import Any
 from pitchside.events.match import Match, attacks_high_x
 from pitchside.events.schema import (
     EventBase,
+    Frame,
     MatchEvent,
     MatchMetadata,
     Pass,
     Phase,
+    PlayerXY,
     Point,
     PossessionChange,
     Pressure,
@@ -40,8 +42,9 @@ from pitchside.simulator.pitch import (
     to_point,
     zone,
 )
-from pitchside.simulator.regimes import MatchTruth, RegimeTracker, plan_spells
+from pitchside.simulator.regimes import MatchTruth, RegimeTracker, is_control, plan_spells
 from pitchside.simulator.rng import Rng
+from pitchside.simulator.runs import ActiveRun, RunLabel
 
 PERIOD_S = 45 * 60
 COMPETITION = "Pitchside Synthetic League"
@@ -69,14 +72,18 @@ def simulate_match(seed: int, params: SimParams = DEFAULT_PARAMS) -> Match:
 def simulate_match_with_truth(
     seed: int, params: SimParams = DEFAULT_PARAMS
 ) -> tuple[Match, MatchTruth]:
-    """The match plus its ground truth (planted regimes), which never enters the events."""
+    """The match plus its ground truth (planted regimes and off-ball runs), which never
+    enters the event stream."""
     rng = Rng(seed)
     metadata = _make_metadata(seed, rng)
     tracker = RegimeTracker(seed=seed, params=params,
                             team_ids=(metadata.home.team_id, metadata.away.team_id),
                             spells=plan_spells(seed, params))
-    events = _Engine(metadata, rng, params, tracker).run()
-    return Match(metadata=metadata, events=events), tracker.truth(metadata.match_id)
+    engine = _Engine(metadata, rng, params, tracker)
+    events = engine.run()
+    truth = tracker.truth(metadata.match_id).model_copy(
+        update={"runs": tuple(engine.run_labels)})
+    return Match(metadata=metadata, events=events), truth
 
 
 def _make_metadata(seed: int, rng: Rng) -> MatchMetadata:
@@ -121,6 +128,12 @@ class _Engine:
         self.pressured = False
         self.from_cross = False  # carrier received a high pass (enables headers)
         self.restart: str | None = None  # kind of restart the next action is, if any
+        # Positions and runs draw from their own streams: they never shift the match's.
+        self.positions_rng = Rng(f"positions:{meta.seed}")
+        self.runs_rng = Rng(f"runs:{meta.seed}")
+        self.plant_runs = not is_control(meta.seed, params)
+        self.active_run: ActiveRun | None = None
+        self.run_labels: list[RunLabel] = []
 
     @property
     def dfn(self) -> int:
@@ -146,6 +159,36 @@ class _Engine:
     def _pid(self, side: int, slot: int) -> str:
         return self.teams[side].players[slot].player_id
 
+    def _positions(self) -> tuple[list[XY], list[XY]]:
+        """Both teams' positions now: attackers (their frame), defenders (theirs)."""
+        margin = self.p.shape_margin_m
+        att = shape(self.ball, margin)
+        att[self.carrier] = self.ball
+        dfn = shape(flip(self.ball), margin)
+        run = self.active_run
+        if run is not None and run.side == self.att:
+            att[run.runner] = run.target
+            if run.follows:  # goal-side of the runner
+                t = flip(run.target)
+                dfn[run.marker] = clamp(t[0] - self.p.marker_follow_m, t[1], margin)
+        return att, dfn
+
+    def _frame(self) -> Frame:
+        att, dfn = self._positions()
+        j = self.p.position_jitter_m
+        players = []
+        for side, positions in ((self.att, att), (self.dfn, dfn)):
+            up = attacks_high_x(self.meta, self.teams[side].team_id, self.period)
+            for slot, xy in enumerate(positions):
+                if not (side == self.att and slot == self.carrier):
+                    xy = (xy[0] + self.positions_rng.uniform(-j, j),
+                          xy[1] + self.positions_rng.uniform(-j, j))
+                x, y = clamp(*(xy if up else flip(xy)))
+                players.append(PlayerXY(player_id=self._pid(side, slot),
+                                        x=round(x, 2), y=round(y, 2)))
+        players.sort(key=lambda p: p.player_id)
+        return Frame(players=tuple(players))
+
     def _emit(
         self, cls: type[EventBase], side: int, slot: int | None, loc: XY, **fields: Any
     ) -> None:
@@ -159,6 +202,7 @@ class _Engine:
             team_id=self.teams[side].team_id,
             player_id=None if slot is None else self._pid(side, slot),
             location=self._point(side, loc),
+            frame=self._frame(),
             **fields,
         ))
 
@@ -172,11 +216,12 @@ class _Engine:
     def _turnover(self, slot: int, loc: XY, cause: str, *, restart: str | None = None) -> None:
         """Give the ball to `slot` of the defending side; `loc` is in that side's frame."""
         old = self.att
+        self.active_run = None
+        self.att, self.carrier, self.ball = 1 - old, slot, loc
         self._emit(
             PossessionChange, 1 - old, slot, loc,
             from_team_id=self.teams[old].team_id, cause=cause,
         )
-        self.att, self.carrier, self.ball = 1 - old, slot, loc
         self.from_cross = False
         self.restart = restart
 
@@ -190,6 +235,7 @@ class _Engine:
         self.att, self.carrier, self.ball = side, ST, CENTRE
         self.from_cross = False
         self.restart = KICKOFF
+        self.active_run = None
 
     def _carry(self, *, force: bool = False) -> None:
         p = self.p
@@ -205,6 +251,10 @@ class _Engine:
         self.regimes.observe(self.period, self.clock, self.goals)
         self.pressured = False
         restart, self.restart = self.restart, None
+        if (restart is None and self.plant_runs and self.active_run is None
+                and self.ball[0] >= self.p.run_min_x
+                and self.runs_rng.chance(self.p.run_prob)):
+            self._start_run()
         if restart is None and self._contest():
             return
         can_shoot = restart in (None, SET_PIECE)
@@ -250,14 +300,82 @@ class _Engine:
             return True
         return False
 
+    # --- planted off-ball runs ----------------------------------------------
+
+    def _start_run(self) -> None:
+        """Plant a run for the team in possession; its label goes to the truth."""
+        rr, p = self.runs_rng, self.p
+        margin = p.shape_margin_m
+        att = shape(self.ball, margin)
+        dfn = shape(flip(self.ball), margin)
+        outfield = [s for s in (*MIDFIELDERS, *FORWARDS) if s != self.carrier]
+        forward = rr.uniform(*p.run_forward_m)
+        lateral = rr.uniform(*p.run_lateral_m)
+
+        def nearest_defender(xy: XY) -> int:
+            return min(range(1, len(dfn)), key=lambda s: (distance(dfn[s], flip(xy)), s))
+
+        if rr.chance(p.decoy_prob):
+            # A decoy takes away the defender marking the receiver: pick the receiver,
+            # their nearest defender is the marker, and the runner is the teammate
+            # closest to that marker, who runs away and drags them along.
+            kind, follows = "decoy", True
+            beneficiary = rr.choice(outfield)
+            marker = nearest_defender(att[beneficiary])
+            mates = [s for s in range(1, len(att)) if s not in (beneficiary, self.carrier)]
+            runner = min(mates, key=lambda s: (distance(att[s], flip(dfn[marker])), s))
+            nominal = att[runner]
+            away = 1.0 if nominal[1] >= att[beneficiary][1] else -1.0
+            target = (nominal[0] + 0.6 * forward, nominal[1] + away * (lateral + 4.0))
+        else:
+            runner = rr.choice(outfield)
+            nominal = att[runner]
+            marker = nearest_defender(nominal)
+            kind, follows, beneficiary = "direct", rr.chance(p.tracked_prob), runner
+            # Runners look for a gap: of a few forward options, the one furthest from
+            # any defender (a tracked runner finds it too, but the marker goes along).
+            options = [clamp(min(nominal[0] + f, p.pass_max_x), nominal[1] + s * lateral,
+                             margin)
+                       for f in (forward, 0.7 * forward) for s in (-1.0, 0.0, 1.0)]
+            target = max(options, key=lambda xy: (min(distance(xy, flip(d)) for d in dfn),
+                                                  xy))
+        target = clamp(min(target[0], p.pass_max_x), target[1], margin)
+        side, opp = self.att, self.dfn
+        self.run_labels.append(RunLabel(
+            team_id=self.teams[side].team_id, player_id=self._pid(side, runner), kind=kind,
+            tracked=follows, effective=kind == "decoy" or not follows,
+            marker_id=self._pid(opp, marker), beneficiary_id=self._pid(side, beneficiary),
+            start_seq=len(self.events),
+        ))
+        self.active_run = ActiveRun(side, kind, runner, marker, beneficiary, target, follows,
+                                    len(self.run_labels) - 1)
+
+    def _close_run(self, pass_seq: int, receiver: int, outcome: str) -> None:
+        run = self.active_run
+        if run is None or run.side != self.att:
+            return
+        label = self.run_labels[run.label_index]
+        self.run_labels[run.label_index] = label.model_copy(update={
+            "pass_seq": pass_seq, "pass_to_beneficiary": receiver == run.beneficiary,
+            "pass_outcome": outcome,
+        })
+        self.active_run = None
+
+    def _space(self, end: XY) -> float:
+        """Distance from a point (attacking frame) to the nearest defender."""
+        _, dfn = self._positions()
+        return min(distance(end, flip(d)) for d in dfn)
+
     # --- passing ----------------------------------------------------------
 
     def _pass(self, restart: str | None = None) -> None:
         p, rng = self.p, self.rng
-        mates = shape(self.ball, p.shape_margin_m)
+        mates, _ = self._positions()
         receiver = self._choose_receiver(mates, restart)
         tx, ty = mates[receiver]
-        n = p.pass_noise_m
+        run = self.active_run
+        played_run = run is not None and run.side == self.att and receiver == run.beneficiary
+        n = p.run_pass_noise_m if played_run else p.pass_noise_m
         end = clamp(
             min(tx + rng.uniform(-n, n), p.pass_max_x),
             ty + rng.uniform(-n, n),
@@ -289,6 +407,7 @@ class _Engine:
             height=height,
             under_pressure=self.pressured,
         )
+        self._close_run(len(self.events) - 1, receiver, outcome)
         self.clock += duration
 
         if outcome == "complete":
@@ -312,6 +431,10 @@ class _Engine:
         p, rng = self.p, self.rng
         if restart == KICKOFF:
             return rng.choice(MIDFIELDERS)
+        run = self.active_run
+        if (restart is None and run is not None and run.side == self.att
+                and self.runs_rng.chance(p.run_pass_prob)):
+            return run.beneficiary
         bx = self.ball[0]
         if restart is None and bx < 45.0 and rng.chance(p.long_ball_prob):
             targets = [s for s in FORWARDS if s != self.carrier]
@@ -358,6 +481,8 @@ class _Engine:
             prob -= p.pass_box_penalty
         if height == "high":
             prob -= p.pass_high_penalty
+        space = min(self._space(end), p.space_ref_m) / p.space_ref_m
+        prob += p.pass_space_bonus * (space - 0.5)
         lo, hi = p.pass_prob_bounds
         if rng.chance(min(max(prob, lo), hi)):
             return "complete"
@@ -396,6 +521,7 @@ class _Engine:
 
     def _shoot(self) -> None:
         p, rng = self.p, self.rng
+        self.active_run = None  # the carrier shot instead of playing the run
         d = distance(self.ball, GOAL)
         header = self.from_cross and d < p.header_max_dist_m and rng.chance(p.header_prob)
         body = "head" if header else FEET[rng.weighted_index(p.foot_weights)]

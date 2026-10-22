@@ -14,7 +14,7 @@ from detector_eval import DEV_SEEDS, TEST_SEEDS, load, score_shifts
 
 from pitchside.metrics.control_vs_chaos import STATES
 
-DELTAS = (0.6, 0.8, 1.0, 1.2, 1.4, 1.6)
+DELTAS = (0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
 RELATIVES = (0.25, 0.5, 0.75, 1.0)
 
 

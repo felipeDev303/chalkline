@@ -125,6 +125,9 @@ def test_retry_with_feedback_then_verified(mini):
     assert insight.status == "verified_after_retry" and insight.attempts == 2
     retry_prompt = model.calls[-1][-1].text
     assert "failed verification" in retry_prompt and "do not match" in retry_prompt
+    # the narrator sees its own draft and fixes only what failed
+    assert "Your previous narrative" in retry_prompt
+    assert "Alder Town have made 3 passes" in retry_prompt
     assert any(n.startswith("verifier rejected attempt 1") for n in insight.notes)
 
 

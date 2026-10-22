@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from pitchside.simulator.params import SimParams
 from pitchside.simulator.rng import Rng
+from pitchside.simulator.runs import RunLabel
 
 PERIOD_MINUTES = 45
 Cause = Literal["planned_press", "planned_drop", "spell_end", "trailing", "trailing_end"]
@@ -64,6 +65,7 @@ class MatchTruth(_Strict):
     control_group: bool
     changes: tuple[RegimeChange, ...]
     high_pressure_spans: tuple[PressureSpan, ...]
+    runs: tuple[RunLabel, ...] = ()  # planted off-ball runs (simulator/runs.py)
 
 
 def truth_path(jsonl_path: Path) -> Path:

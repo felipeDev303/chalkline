@@ -11,7 +11,8 @@ from pitchside.metrics.contract import Fact, ToolResult
 Persona = Literal["casual", "analyst"]
 Language = Literal["en", "es"]
 TurnKind = Literal["moment", "recap", "question"]
-Status = Literal["verified", "verified_after_retry", "evidence_only"]
+# "unverified" only occurs in the single-agent ablation baseline without a verifier.
+Status = Literal["verified", "verified_after_retry", "evidence_only", "unverified"]
 
 
 class _Strict(BaseModel):
@@ -76,3 +77,4 @@ class Insight(_Strict):
     model: str | None = None  # which deployment wrote the narrative, if any
     failure: str | None = None  # why the turn fell back to evidence only
     notes: tuple[str, ...] = ()  # recoveries on the way (fallback model, default evidence)
+    tokens: int = 0  # model tokens spent on the turn, all agents and attempts

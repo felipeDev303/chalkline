@@ -23,6 +23,7 @@ internals, never ground-truth sidecars (both enforced by `tests/test_metrics_iso
   | share (a split of a whole) | integer + `%` | `55%` |
   | m, km/h, seconds | 1 decimal + unit | `22.8 m`, `92.4 km/h`, `3.0 s` |
   | per_min | 1 decimal + `/min` | `-4.3/min` |
+  | xg (expected goals / threat) | 2 decimals | `0.08` |
   | score (0-100 index) | integer | `72` |
   | minute | minute mark | `63'`, `45+2'` |
   | formation | outfield shape, defenders first | `4-3-3` |
@@ -146,6 +147,53 @@ this document and the code disagree.
   defenders and the goalkeeper (no tracking data).
 - **Cannot tell:** how well a shot was struck beyond its speed; deflections.
 
+### `threat_profile`
+
+- **Definition:** expected threat (xT) added by a team's or a player's completed passes:
+  total, number of passes valued, and the 3 passes that added the most, with minute.
+  The football counterpart of basketball's expected possession value.
+- **Formula:** the pitch is cut into 12 x 8 zones in the attacking frame. A zone's xT is
+  the probability that possession from there ends in a goal, from a Markov model of
+  actions (Singh, 2018): `xT(z) = s(z) g(z) + m(z) sum_z' T(z, z') xT(z')`, with s / m
+  the shares of shots and passes from z, g the goal rate of shots from z, and T the rate
+  of completed passes from z to z' (failed passes add 0), solved by 50 iterations.
+  A completed pass adds `xT(end) - xT(start)`.
+- **Fit and check:** the grid is fitted on simulated seeds 0-99 (`scripts/fit_xt.py`
+  writes `metrics/_xt_grid.py`, so metrics never read files) and its calibration on
+  untouched seeds 200-399 is in `docs/data/CALIBRATION.md` (ECE and deciles).
+- **Thresholds:** `top_shown` = 3.
+- **Caveats:** reflects the simulated league's style; carries and failed passes are not
+  credited; values are small per pass (goals are rare), shown with 2 decimals.
+- **Cannot tell:** the off-ball movement that made a pass possible.
+
+### `off_ball_credit`
+
+- **Definition:** decisive off-ball runs behind completed passes into the final third:
+  who ran, who received, own run or decoy, and the receiver's control of the pass
+  destination with and without the run.
+- **Formula:** frames come from the pass and from the event where the passer got the
+  ball. Each teammate's movement in between, minus their team's median movement (the
+  block shifts with the ball; a run is moving differently from it), is undone in turn,
+  together with any defender within 3 m who moved at least 3 m relative to their own
+  block (they went with the runner). The receiver's control of the destination is
+  `logistic(BETA x (I_receiver - sum of I_defenders))`, with Gaussian influence
+  `I = exp(-d^2 / (2 SIGMA^2))`, `SIGMA` = 6 m and `BETA` = 3; other attackers do not
+  count, or a decoy (runner and marker leaving together) would cancel out. Undoing the
+  receiver's own run moves the pass target with them. Credit = control with minus
+  control without; the top-credited teammate is the runner, decisive if credit >=
+  `decisive_credit`. Teammates who moved less than `min_run_m` made no run.
+- **Thresholds:** `decisive_credit` = 0.3, `min_run_m` = 4, `shown` = 5. SIGMA, BETA and
+  the decisive threshold were chosen on dev seeds (rule for the threshold: best recall
+  with precision >= 0.70, as for pressure shifts).
+- **Validation:** treated matches plant three kinds of run (free direct, decoy, tracked
+  direct) with labels in the truth sidecar. On untouched seeds 200-399
+  `docs/data/CALIBRATION.md` reports how often the engine credits the runner first,
+  against two naive rules (credit the recipient: fails every decoy; credit whoever moved
+  most: credits tracked runs that created nothing).
+- **Caveats:** control is a geometric index, not a probability; frames are event-level,
+  without velocities; only passes into the final third are analysed by the tool.
+- **Cannot tell:** runs that no pass used; whether a run was meant as a decoy.
+
 ### `control_vs_chaos`
 
 - **Definition:** each 5-minute window classified as `control`, `contested` or `chaos`,
@@ -180,13 +228,14 @@ this document and the code disagree.
   count, the shift only if it shows in the latest complete window, and the current
   partial window's rate when it has `min_window_s` of play; `all` returns every shift.
   Shifts are numbered over the whole match, so `shift3` has the same id in both scopes.
-- **Thresholds:** `min_delta_per_min` = 1.6, `min_relative_change` = 0.25,
-  `min_complete_windows` = 2.
+- **Thresholds:** `min_delta_per_min` = 1.8, `min_relative_change` = 0.25,
+  `min_complete_windows` = 2. (Re-tuned with schema 0.3.0: at 1.6 the dev seeds gave
+  1.1 false positives per control match, over the cap, so the rule moved to 1.8.)
 - **Validation:** simulated matches carry planted pressing changes (ground truth in a
   `.truth.json` sidecar that metrics never read). Thresholds were tuned on dev seeds
   0-99 by `scripts/tune_detectors.py` with a fixed rule: best F1 among settings with at
   most 1.0 false positive per control-group match (no planted regimes). The lower
-  threshold with the best F1 (0.8/min) produced about 9 false "tactical changes" per
+  threshold with the best F1 (0.8/min) produced about 8 false "tactical changes" per
   match, unusable for live commentary. Precision, recall by cause and false positives
   on untouched test seeds 200-399 are in `docs/data/CALIBRATION.md`: increases are
   found, drops in pressing mostly are not, since they are smaller than the threshold.
@@ -205,7 +254,8 @@ this document and the code disagree.
 - **Formula:** importance: goal 100; big chance (non-goal shot with chance quality >=
   `big_chance_quality`) 40 + 0.4 x quality; control/chaos swing (consecutive classified
   windows going control to chaos or back) 50; pressure shift 40; hardest completed pass
-  35; passing sequence (possession with >= `sequence_passes` passes) 30 + 2 per pass
+  35; the completed pass that added the most expected threat 35; decisive off-ball run
+  55 (the 3 strongest); passing sequence (possession with >= `sequence_passes` passes) 30 + 2 per pass
   beyond 10, capped at 90 so it never outranks a goal; a player's `milestone_passes`-th
   pass 20. Ranked by importance, then time.
 - **Thresholds:** `big_chance_quality` = 90 (about 2.5 per team per simulated match),

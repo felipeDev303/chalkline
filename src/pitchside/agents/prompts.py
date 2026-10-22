@@ -96,7 +96,8 @@ def _facts_block(results: Sequence[ToolResult]) -> str:
 
 
 def narrator_prompt(request: TurnRequest, metadata: MatchMetadata,
-                    results: Sequence[ToolResult], feedback: Sequence[str] = ()) -> str:
+                    results: Sequence[ToolResult], feedback: Sequence[str] = (),
+                    previous: str | None = None) -> str:
     parts = [
         f"{KIND_GUIDE[request.kind]} {PERSONA_GUIDE[request.persona]}",
         LANGUAGE_GUIDE[request.language],
@@ -106,6 +107,9 @@ def narrator_prompt(request: TurnRequest, metadata: MatchMetadata,
         parts.append(f"Viewer question: {request.question}")
     parts.append("Facts (quote only these):\n" + _facts_block(results))
     if feedback:
-        parts.append("Your previous narrative failed verification. Fix exactly these "
-                     "problems and keep everything else grounded:\n- " + "\n- ".join(feedback))
+        if previous:
+            parts.append("Your previous narrative (JSON):\n" + previous)
+        parts.append("It failed verification. Fix only the sentences named below; keep "
+                     "every other sentence and its evidence_ids exactly as it was. You may "
+                     "drop a sentence you cannot ground.\n- " + "\n- ".join(feedback))
     return "\n\n".join(parts)
