@@ -1,0 +1,14 @@
+.env
+.env.*
+.venv
+.git
+.github
+.claude
+.pytest_cache
+.ruff_cache
+**/__pycache__
+data
+docs
+infra
+scripts
+tests

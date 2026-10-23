@@ -71,14 +71,15 @@ class Game:
 
 @dataclass
 class RateLimit:
-    per_minute: int
+    limit: int
+    window_s: float = 60.0
     hits: dict[str, deque[float]] = field(default_factory=dict)
 
     def allow(self, client: str, now: float) -> bool:
         q = self.hits.setdefault(client, deque())
-        while q and now - q[0] > 60:
+        while q and now - q[0] > self.window_s:
             q.popleft()
-        if len(q) >= self.per_minute:
+        if len(q) >= self.limit:
             return False
         q.append(now)
         return True
@@ -110,11 +111,15 @@ class Audience(BaseModel):
 
 def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_models,
                store: StoreFactory | None = None, cache_dir: Path | None = None,
-               insights_per_minute: int | None = None, concurrent_desks: int = 2) -> FastAPI:
+               insights_per_minute: int | None = None, insights_per_day: int | None = None,
+               concurrent_desks: int = 2) -> FastAPI:
     """`store` defaults to Blob or a folder from the environment (see api/cache.py);
-    `cache_dir` forces a folder (tests)."""
+    `cache_dir` forces a folder (tests). New insights are limited per client per minute
+    and, across all clients, per day: the daily cap bounds model spend even if client
+    addresses are spoofed."""
     seeds = seeds if seeds is not None else demo_seeds()
     per_minute = insights_per_minute or int(os.environ.get("PITCHSIDE_INSIGHTS_PER_MIN", "6"))
+    per_day = insights_per_day or int(os.environ.get("PITCHSIDE_INSIGHTS_PER_DAY", "300"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -136,6 +141,7 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
         games[match.metadata.match_id] = Game.build(match)
     cache = InsightCache()
     limit = RateLimit(per_minute)
+    daily = RateLimit(per_day, window_s=86400.0)
     desks = asyncio.Semaphore(concurrent_desks)
     app.state.models = []
 
@@ -203,8 +209,13 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
             return cached
         client = request.client.host if request.client else "unknown"
         # Without models the desk is deterministic and free: nothing to limit.
-        if app.state.models and not limit.allow(client, time.monotonic()):
-            raise HTTPException(429, "too many new insights; cached ones are still free")
+        if app.state.models:
+            now = time.monotonic()
+            if not limit.allow(client, now):
+                raise HTTPException(429, "too many new insights; cached ones are still free")
+            if not daily.allow("*", now):
+                raise HTTPException(429, "daily budget for new insights reached; "
+                                         "cached ones are still free")
         async with desks:
             insight = await Desk(g.match, app.state.models).run(turn)
         if cacheable(insight):

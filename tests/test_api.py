@@ -215,6 +215,21 @@ def test_insight_with_a_model_is_verified_cached_and_limited(tmp_path, match):
         assert c.post(url, json=turn).json() == body
 
 
+def test_daily_cap_bounds_new_insights_across_clients(tmp_path):
+    async def models(stack):
+        return [("primary", ScriptedChatClient([]))]  # every turn: narrator unavailable
+
+    turn = {"as_of_seq": 200, "kind": "moment", "persona": "casual", "language": "en"}
+    app = create_app(seeds=[SEED], models=models, cache_dir=tmp_path,
+                     insights_per_minute=10, insights_per_day=1)
+    with TestClient(app) as c:
+        url = f"/api/matches/{first_match(c)['match_id']}/insights"
+        assert c.post(url, json=turn).status_code == 200
+        second = c.post(url, json={**turn, "language": "es"},
+                        headers={"X-Forwarded-For": "203.0.113.9"})
+    assert second.status_code == 429 and "daily" in second.json()["detail"]
+
+
 def test_story_insight_shares_the_precompute_cache_key(tmp_path, match, schedule):
     """An answer stored by the precompute script is what the UI gets for that story."""
     story = story_out(match, schedule[0])
