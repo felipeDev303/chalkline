@@ -9,7 +9,9 @@ const T = {
     control_with: "Receiver's control of the pass destination, with the run",
     control_without: "…and without it",
     scene_note: "Counterfactual: the runner moves only with their team's block, and any defender who followed them goes back too.",
-    back_live: "Back to live", next_story: "Next story ⏭", on_air: "On air",
+    back_live: "Back to live", next_story: "Next story", on_air: "On air",
+    replay: "Replay", speed: "Speed", final: "FT", lg_run: "The run that made it", lg_goal: "Goal",
+    lg_other: "Other story", lg_sides: "Above the line: home · below: away · only what has aired so far",
     on_air_note: "Chosen live by the producer agent from what is known so far. Tap a story for the desk's verified explanation.",
     desk: "The desk", desk_empty: "Pick a story, ask a question or request a recap.",
     ask_ph: "Ask about the match so far…", ask: "Ask", recap: "Recap so far", close: "Close",
@@ -36,7 +38,10 @@ const T = {
     control_with: "Control del receptor sobre el destino del pase, con la carrera",
     control_without: "…y sin ella",
     scene_note: "Contrafactual: el corredor se mueve solo con el bloque de su equipo, y el defensor que lo siguió también vuelve.",
-    back_live: "Volver al vivo", next_story: "Siguiente historia ⏭", on_air: "Al aire",
+    back_live: "Volver al vivo", next_story: "Siguiente historia", on_air: "Al aire",
+    replay: "Repetición", speed: "Velocidad", final: "FIN", lg_run: "La carrera que lo hizo posible",
+    lg_goal: "Gol", lg_other: "Otra historia",
+    lg_sides: "Arriba: local · abajo: visita · solo lo que ya salió al aire",
     on_air_note: "Las elige en vivo el agente productor con lo que se sabe hasta ahora. Toca una historia para la explicación verificada de la mesa.",
     desk: "La mesa", desk_empty: "Elige una historia, haz una pregunta o pide un resumen.",
     ask_ph: "Pregunta sobre el partido hasta ahora…", ask: "Preguntar", recap: "Resumen hasta ahora",
@@ -161,7 +166,7 @@ function renderPlayers(dots, opts = {}) {
       "p", teamOf(d.player_id),
       S.focus === d.player_id ? "focus" : "",
       opts.runner === d.player_id ? "runner" : "",
-      opts.scene && opts.runner !== d.player_id && opts.recipient !== d.player_id ? "dim" : "",
+      opts.scene && ![opts.runner, opts.recipient, opts.passer].includes(d.player_id) ? "dim" : "",
     ].join(" "));
   }
   layer.querySelectorAll("g").forEach((g) => { if (!keep.has(g.dataset.id)) g.remove(); });
@@ -173,6 +178,7 @@ function renderLive() {
   if (!o) return;
   $("#scene").innerHTML = "";
   renderPlayers(o.players);
+  renderLower();
   const e = o.last_event;
   const ball = e.type === "pass" && e.outcome === "complete" ? e.end_location : e.location;
   $("#ball").setAttribute("cx", ball.x);
@@ -190,6 +196,37 @@ function renderLive() {
 
 function factValue(story, name) { return story.facts.find((f) => suffix(f) === name); }
 
+function sideOf(teamId) {
+  if (!teamId) return "";
+  return teamId === S.meta.home.team_id ? "home" : "away";
+}
+
+// The lower third: the story being replayed, else the one picked, else the latest on air.
+function renderLower() {
+  const story = S.scene ?? S.selected?.story ?? S.overlay?.stories[0] ?? null;
+  const lower = $("#lower");
+  if (!story) { lower.hidden = true; return; }
+  lower.hidden = false;
+  const minute = factValue(story, "minute")?.display ?? "";
+  const kicker = $("#lower-kicker");
+  kicker.textContent = `${t("kinds")[story.kind] ?? story.kind} · ${minute}`;
+  kicker.className = `kicker ${story.kind === "decisive_run" ? "" : story.kind === "goal" ? "goal" : "plain"}`;
+  $("#lower-body").className = `lower-body ${sideOf(story.team_id)}`;
+  const team = story.team_id === S.meta.home.team_id ? S.meta.home : story.team_id ? S.meta.away : null;
+  let name;
+  if (story.kind === "decisive_run") {
+    const p = S.players[story.player_id];
+    name = `${esc(p.name)} <small>#${p.shirt} · ${esc(team.name)}</small>`;
+  } else if (story.kind === "goal") {
+    name = `${esc(S.meta.home.name)} ${esc(factValue(story, "scoreline").display)} ${esc(S.meta.away.name)}`;
+  } else {
+    name = team ? esc(team.name) : `${esc(S.meta.home.short_name)} v ${esc(S.meta.away.short_name)}`;
+  }
+  $("#lower-name").innerHTML = name;
+  $("#lower-text").textContent = story.headline[S.lang];
+  $("#meters").hidden = !S.scene;
+}
+
 function renderScene() {
   const story = S.scene;
   const g = story.ghost;
@@ -199,7 +236,10 @@ function renderScene() {
   const target = withRun || g.player_id !== g.recipient_id ? g.pass_to : {
     x: g.pass_to.x - (g.with_xy.x - g.without_xy.x), y: g.pass_to.y - (g.with_xy.y - g.without_xy.y),
   };
-  renderPlayers(g.frame, { scene: true, runner: g.player_id, recipient: g.recipient_id, at });
+  const near = (d) => Math.hypot(d.x - g.pass_from.x, d.y - g.pass_from.y);
+  const passer = g.frame.filter((d) => d.team_id === story.team_id)
+    .reduce((a, b) => (near(b) < near(a) ? b : a)).player_id;
+  renderPlayers(g.frame, { scene: true, runner: g.player_id, recipient: g.recipient_id, passer, at });
   $("#scene").innerHTML = `
     <circle class="target" cx="${target.x}" cy="${svgY(target.y)}" r="2.6"/>
     <circle class="ghost-dot" cx="${other.x}" cy="${svgY(other.y)}" r="1.6"/>
@@ -210,17 +250,18 @@ function renderScene() {
   line.setAttribute("x2", target.x); line.setAttribute("y2", svgY(target.y));
   line.setAttribute("class", "pass complete");
   line.style.display = "";
-  $("#ball").setAttribute("cx", g.pass_from.x);
-  $("#ball").setAttribute("cy", svgY(g.pass_from.y));
+  $("#ball").setAttribute("cx", g.pass_from.x + 1.2);  // at the passer's feet, not on top
+  $("#ball").setAttribute("cy", svgY(g.pass_from.y) - 1.2);
   const cw = factValue(story, "control_with");
   const co = factValue(story, "control_without");
-  $("#scene-title").textContent = story.headline[S.lang];
   $("#m-with").style.width = `${cw.value}%`;
   $("#m-without").style.width = `${co.value}%`;
   $("#v-with").textContent = num(cw.display);
   $("#v-without").textContent = num(co.display);
-  $("#scene-card").hidden = false;
+  $("#scene-chip").textContent = `${t("replay")} · ${factValue(story, "minute")?.display ?? ""}`;
+  $("#scene-ctl").hidden = false;
   setSeg("scene-toggle", S.sceneMode);
+  renderLower();
 }
 
 function openScene(story) {
@@ -233,7 +274,7 @@ function openScene(story) {
 
 function closeScene() {
   S.scene = null;
-  $("#scene-card").hidden = true;
+  $("#scene-ctl").hidden = true;
   renderLive();
 }
 
@@ -266,8 +307,12 @@ function applyOverlay() {
   $("#seq").value = S.seq;
   $("#home-score").textContent = o.score[S.meta.home.team_id];
   $("#away-score").textContent = o.score[S.meta.away.team_id];
-  $("#clock").textContent = o.minute;
+  const done = S.seq >= S.last;
+  $("#clock").textContent = done ? t("final") : o.minute;
+  const played = done ? 1 : Math.min(1, ((o.period - 1) * 2700 + o.clock_s) / 5400);
+  $("#ring").setAttribute("stroke-dasharray", `${(43.98 * played).toFixed(2)} 44`);
   if (!S.scene) renderLive();
+  renderChapters();
   renderFeed();
   if (S.focus && Math.abs(S.seq - S.focusSeq) >= 30) loadFocus();
   if (S.seq >= S.last) pause();
@@ -277,22 +322,29 @@ function play() {
   if (S.seq >= S.last) goto(S.first);
   if (S.scene) closeScene();
   S.playing = true;
-  $("#play").textContent = "❚❚";
+  $("#play-icon").setAttribute("d", "M1 1 H5 V15 H1 z M9 1 H13 V15 H9 z");
+  $("#play").setAttribute("aria-label", "Pause");
   clearInterval(S.timer);
   S.timer = setInterval(() => goto(S.seq + Number($("#speed").value)), 350);
 }
 
 function pause() {
   S.playing = false;
-  $("#play").textContent = "▶";
+  $("#play-icon").setAttribute("d", "M1 1 L13 8 L1 15 z");
+  $("#play").setAttribute("aria-label", "Play");
   clearInterval(S.timer);
 }
 
+// Timeline marks: only stories already on air (no spoilers); home above, away below.
 function renderChapters() {
   const span = S.last - S.first || 1;
-  $("#chapters").innerHTML = S.chapters.map((s) =>
-    `<span class="${s.kind}" style="left:${(100 * (s.aired_at_seq - S.first)) / span}%"
-       title="${esc(s.headline[S.lang])}"></span>`).join("");
+  const at = (seq) => (100 * (seq - S.first)) / span;
+  $("#tl-played").style.width = `${at(S.seq)}%`;
+  $("#chapters").innerHTML = S.chapters.filter((s) => s.aired_at_seq <= S.seq).map((s) => {
+    const glyph = { decisive_run: "g-run", goal: "g-goal" }[s.kind] ?? "g-tick";
+    const row = { home: "up", away: "down" }[sideOf(s.team_id)] ?? "mid";
+    return `<i class="${glyph} ${row}" style="left:${at(s.seq)}%" title="${esc(s.headline[S.lang])}"></i>`;
+  }).join("");
 }
 
 async function nextStory() {
@@ -315,13 +367,14 @@ function renderFeed() {
   feed.innerHTML = "";
   for (const s of stories) {
     const li = document.createElement("li");
-    const side = s.team_id === S.meta.home.team_id ? "home" : s.team_id ? "away" : "";
     const fresh = !S.seen.has(s.story_id);
     S.seen.add(s.story_id);
-    li.className = [side, fresh ? "fresh" : "",
+    li.className = [sideOf(s.team_id), fresh ? "fresh" : "",
       S.selected?.story?.story_id === s.story_id ? "sel" : ""].join(" ");
-    li.innerHTML = `<div class="kind">${esc(t("kinds")[s.kind] ?? s.kind)}</div>${esc(s.headline[S.lang])}`;
-    li.addEventListener("click", () => selectStory(s));
+    const minute = factValue(s, "minute")?.display ?? "";
+    li.innerHTML = `<button type="button"><span class="kind"><span>${esc(t("kinds")[s.kind] ?? s.kind)}</span>`
+      + `<span>${esc(minute)}</span></span>${esc(s.headline[S.lang])}</button>`;
+    li.querySelector("button").addEventListener("click", () => selectStory(s));
     feed.appendChild(li);
   }
 }
@@ -350,6 +403,7 @@ function selectStory(story) {
   S.sentence = null;
   if (story.ghost) openScene(story);
   else if (S.scene) closeScene();
+  else renderLower();
   renderFeed();
   renderDesk();
 }
@@ -380,7 +434,9 @@ function statusBadge(insight) {
   const cls = { verified: "verified", verified_after_retry: "retry" }[insight.status] ?? "evidence";
   const label = { verified: t("verified"), verified_after_retry: t("retry") }[insight.status]
     ?? t("evidence_only");
-  return `<span class="badge ${cls}">${insight.status === "evidence_only" ? "" : "✓ "}${label}</span>`;
+  const check = insight.status === "evidence_only" ? ""
+    : '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5 L4.5 9.5 L10.5 2.5"/></svg>';
+  return `<span class="badge ${cls}">${check}${label}</span>`;
 }
 
 function renderTake(persona, entry, idx) {
@@ -515,12 +571,14 @@ async function loadMatch(matchId) {
     }
   }
   S.selected = null; S.scene = null; S.focus = ""; S.seen = new Set();
-  $("#scene-card").hidden = true;
+  $("#scene-ctl").hidden = true;
   $("#evidence").hidden = true;
   $("#focus-card").hidden = true;
   $("#players").innerHTML = "";
-  $("#home-name").textContent = S.meta.home.name;
-  $("#away-name").textContent = S.meta.away.name;
+  $("#home-code").textContent = S.meta.home.short_name;
+  $("#away-code").textContent = S.meta.away.short_name;
+  $("#home-code").title = S.meta.home.name;
+  $("#away-code").title = S.meta.away.name;
   $("#seq").min = S.first;
   $("#seq").max = S.last;
   $("#focus").innerHTML = `<option value="">${t("nobody")}</option>` + [S.meta.home, S.meta.away].map((team) =>
@@ -539,7 +597,7 @@ function wire() {
   }));
   document.querySelectorAll("#lang button").forEach((b) => b.addEventListener("click", () => {
     S.lang = b.dataset.v; setSeg("lang", S.lang); applyI18n(); renderChapters();
-    if (S.overlay) renderFeed();
+    if (S.overlay) { renderFeed(); renderLower(); }
     if (S.scene) renderScene();
     if (S.focus) loadFocus();
     renderDesk();
@@ -567,7 +625,7 @@ function wire() {
   });
   const defs = document.createElementNS(SVGNS, "defs");
   defs.innerHTML = `<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4"
-    markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7ee0a1"/></marker>`;
+    markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6fdca0"/></marker>`;
   $("#pitch").prepend(defs);
 }
 
