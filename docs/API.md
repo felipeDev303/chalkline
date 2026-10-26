@@ -16,6 +16,7 @@ client advances `as_of_seq` and asks for the overlay, so the server holds no ses
 | POST | `/api/matches/{id}/tools/{name}` | one tool's `ToolResult`; body: its arguments |
 | POST | `/api/matches/{id}/insights` | the agent desk's `Insight`; body: `TurnRequest` |
 | POST | `/api/matches/{id}/stories/{story_id}/insights` | the same for one aired story; body: `persona`, `language` |
+| POST | `/api/matches/{id}/check` | fact-check anyone's commentary line; body: `text`, `as_of_seq`, `language` (no model) |
 
 ## Timed overlay (`overlay_version` 1.1.0)
 

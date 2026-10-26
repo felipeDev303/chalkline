@@ -320,6 +320,23 @@ this document and the code disagree.
 - **Caveats:** off-ball work is credited by `off_ball_credit`, not here.
 - **Cannot tell:** the player's influence on moments they did not touch.
 
+## Fact-checking a line (`agents/fact_check.py`)
+
+Any commentator's line can be checked against what is known at `as_of_seq`, with no
+model. The evidence is a broad set of tool results at that moment (summary, key
+moments, win probability, best shot, off-ball credit, shot and pass profiles of both
+teams, and the stats of any player the line names). Each number is matched against
+fact displays (same rules as grounding) and attributed by proximity: the stat word
+right after the number, else right before it ("52% possession", "possession is 52%"),
+and the team or player named last before it. Statuses: **supported** (a fact of that
+stat, for that team or player, has this display), **wrong stat** (the number exists,
+for another stat or team), **unsupported** (no fact has it), **found** (no stat named;
+some fact has it). Minute marks and scorelines are self-describing; a minute mark
+never counts as a count of passes or shots. Off numbers come with what the data
+says for the named stat. Misspelled team and player names are flagged too. Stat
+words are a fixed English and Spanish list, so unusual phrasings fall to "found" or
+"unsupported" rather than to a wrong "supported".
+
 ## Producer
 
 The producer agent (`api/producer.py`) decides which moments go on air during a

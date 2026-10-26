@@ -10,7 +10,18 @@ const T = {
     control_without: "…and without it",
     scene_note: "Counterfactual: the runner moves only with their team's block, and any defender who followed them goes back too.",
     back_live: "Back to live", next_story: "Next story", on_air: "On air",
-    replay: "Replay", speed: "Speed", final: "FT", draw: "Draw", win_prob: "Win probability", lg_run: "The run that made it", lg_goal: "Goal",
+    replay: "Replay", speed: "Speed", final: "FT", draw: "Draw", win_prob: "Win probability",
+    next_goal: "Next goal", full_screen: "Full screen", mode_live: "Foundry live",
+    mode_off: "Evidence only (no model)",
+    check_title: "Fact-check a line", check: "Check", check_example: "Try an example",
+    check_note: "Type any commentator's line: every number is checked against what is known at this minute, no model involved.",
+    check_ph: "e.g. They have had 85% possession.",
+    check_verified: "every number checks out", check_flagged: "flagged",
+    check_nothing: "no numbers to check",
+    st_supported: "backed by the data", st_found: "this number is in the data",
+    st_wrong_stat: "this number belongs to another stat", st_unsupported: "no fact has this number",
+    data_says: "The data says", misspelled: "Name not in this match",
+    example_line: (team) => `${team} have had 85% possession.`, lg_run: "The run that made it", lg_goal: "Goal",
     lg_other: "Other story", lg_sides: "Above the line: home · below: away · only what has aired so far",
     on_air_note: "Chosen live by the producer agent from what is known so far. Tap a story for the desk's verified explanation.",
     desk: "The desk", desk_empty: "Pick a story, ask a question or request a recap.",
@@ -40,7 +51,18 @@ const T = {
     scene_note: "Contrafactual: el corredor se mueve solo con el bloque de su equipo, y el defensor que lo siguió también vuelve.",
     back_live: "Volver al vivo", next_story: "Siguiente historia", on_air: "Al aire",
     replay: "Repetición", speed: "Velocidad", final: "FIN", draw: "Empate",
-    win_prob: "Probabilidad de ganar", lg_run: "La carrera que lo hizo posible",
+    win_prob: "Probabilidad de ganar",
+    next_goal: "Siguiente gol", full_screen: "Pantalla completa", mode_live: "Foundry en vivo",
+    mode_off: "Solo evidencia (sin modelo)",
+    check_title: "Verifica una frase", check: "Verificar", check_example: "Probar un ejemplo",
+    check_note: "Escribe la frase de cualquier comentarista: cada número se contrasta con lo que se sabe a este minuto, sin modelo.",
+    check_ph: "p. ej. Tuvieron 85% de posesión.",
+    check_verified: "todos los números cuadran", check_flagged: "con observaciones",
+    check_nothing: "no hay números que verificar",
+    st_supported: "respaldado por los datos", st_found: "este número está en los datos",
+    st_wrong_stat: "este número es de otra estadística", st_unsupported: "ningún dato tiene este número",
+    data_says: "Los datos dicen", misspelled: "Nombre que no está en este partido",
+    example_line: (team) => `${team} tuvo 85% de posesión.`, lg_run: "La carrera que lo hizo posible",
     lg_goal: "Gol", lg_other: "Otra historia",
     lg_sides: "Arriba: local · abajo: visita · solo lo que ya salió al aire",
     on_air_note: "Las elige en vivo el agente productor con lo que se sabe hasta ahora. Toca una historia para la explicación verificada de la mesa.",
@@ -141,6 +163,15 @@ function applyI18n() {
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
   $("#how-body").innerHTML = HOW[S.lang];
+  renderMode();
+}
+
+function renderMode() {
+  if (S.live === undefined) return;
+  const badge = $("#mode");
+  badge.hidden = false;
+  badge.className = `mode ${S.live ? "live" : ""}`;
+  badge.textContent = S.live ? t("mode_live") : t("mode_off");
 }
 
 function setSeg(id, value) {
@@ -359,8 +390,8 @@ function renderChapters() {
   }).join("");
 }
 
-async function nextStory() {
-  const next = S.chapters.find((s) => s.aired_at_seq > S.seq);
+async function nextStory(kind) {
+  const next = S.chapters.find((s) => s.aired_at_seq > S.seq && (!kind || s.kind === kind));
   if (!next) return;
   pause();
   await goto(next.aired_at_seq);
@@ -537,6 +568,35 @@ function showTemplateEvidence(story) {
     + factsTable(story.facts);
 }
 
+// --- fact-check a line ---------------------------------------------------------------
+
+async function checkLine(text) {
+  const body = $("#check-body");
+  body.innerHTML = `<p class="writing">…</p>`;
+  const r = await api(`/api/matches/${S.matchId}/check`,
+    { text, as_of_seq: S.seq, language: S.lang }).catch(() => null);
+  if (!r) { body.innerHTML = `<p class="fine">${t("error")}</p>`; return; }
+  const cls = { verified: "verified", flagged: "flagged" }[r.verdict] ?? "evidence";
+  const label = { verified: t("check_verified"), flagged: t("check_flagged") }[r.verdict]
+    ?? t("check_nothing");
+  // The line with each checked number marked by its status, in order.
+  let html = "", rest = r.text;
+  for (const n of r.numbers) {
+    const at = rest.indexOf(n.raw);
+    if (at < 0) continue;
+    html += esc(rest.slice(0, at)) + `<span class="num ${n.status}">${esc(n.raw)}</span>`;
+    rest = rest.slice(at + n.raw.length);
+  }
+  html += esc(rest);
+  const facts = (fs) => fs.map((f) =>
+    `<div><b>${esc(num(f.display))}</b> ${esc(f.label)} <code>${esc(f.evidence_id)}</code></div>`).join("");
+  const items = r.numbers.map((n) => `<li class="${n.status}"><b>${esc(n.raw)}</b>: ${t(`st_${n.status}`)}
+    ${facts(n.matches)}${n.data_says.length ? `<div class="fine">${t("data_says")}:</div>${facts(n.data_says)}` : ""}</li>`)
+    .concat(r.misspelled.map((m) => `<li class="unsupported">${t("misspelled")}: ${esc(m)}</li>`)).join("");
+  body.innerHTML = `<span class="badge ${cls}">${label}</span>
+    <p class="check-line">${html}</p><ul class="check-list">${items}</ul>`;
+}
+
 // --- player focus ------------------------------------------------------------------
 
 function setFocus(pid) {
@@ -585,6 +645,7 @@ async function loadMatch(matchId) {
   S.selected = null; S.scene = null; S.focus = ""; S.seen = new Set();
   $("#scene-ctl").hidden = true;
   $("#evidence").hidden = true;
+  $("#check-body").innerHTML = "";
   $("#focus-card").hidden = true;
   $("#players").innerHTML = "";
   $("#home-code").textContent = S.meta.home.short_name;
@@ -618,7 +679,21 @@ function wire() {
   $("#focus").addEventListener("change", (e) => setFocus(e.target.value));
   $("#play").addEventListener("click", () => (S.playing ? pause() : play()));
   $("#seq").addEventListener("input", (e) => { pause(); if (S.scene) closeScene(); goto(Number(e.target.value)); });
-  $("#next").addEventListener("click", nextStory);
+  $("#next").addEventListener("click", () => nextStory());
+  $("#next-goal").addEventListener("click", () => nextStory("goal"));
+  $("#full").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else $(".stage").requestFullscreen?.();
+  });
+  $("#check-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $("#check-text").value.trim();
+    if (text) checkLine(text);
+  });
+  $("#check-example").addEventListener("click", () => {
+    $("#check-text").value = t("example_line")(S.meta.away.name);
+    checkLine($("#check-text").value);
+  });
   $("#scene-exit").addEventListener("click", closeScene);
   document.querySelectorAll("#scene-toggle button").forEach((b) => b.addEventListener("click", () => {
     S.sceneMode = b.dataset.v; renderScene();
@@ -634,6 +709,7 @@ function wire() {
     if (e.target.matches("input, select")) return;
     if (e.code === "Space") { e.preventDefault(); S.playing ? pause() : play(); }
     if (e.key === "n") nextStory();
+    if (e.key === "g") nextStory("goal");
   });
   const defs = document.createElementNS(SVGNS, "defs");
   defs.innerHTML = `<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4"
@@ -646,6 +722,10 @@ async function main() {
   setSeg("persona", S.persona);
   setSeg("lang", S.lang);
   applyI18n();
+  api("/api/health").then((h) => {
+    S.live = h.models.length > 0;
+    renderMode();
+  }).catch(() => {});
   S.matches = await api("/api/matches");
   $("#match").innerHTML = S.matches.map((m) =>
     `<option value="${m.match_id}">${esc(m.home)} v ${esc(m.away)}</option>`).join("");

@@ -211,16 +211,12 @@ def validate(text: str, results: Sequence[ToolResult], locale: Locale) -> Ground
     return validate_facts(text, [f for r in results for f in r.facts], locale)
 
 
-def validate_facts(text: str, facts: Sequence[Fact], locale: Locale) -> GroundingReport:
-    """Check `text` against exactly these facts (e.g. the ones a sentence cites).
-
-    The caller is responsible for the facts coming from a single agent turn.
-    """
+def match_numbers(text: str, facts: Sequence[Fact],
+                  locale: Locale) -> list[tuple[NumberToken, list[str]]]:
+    """Every number in `text`, with the ids of the facts whose display it matches."""
     index = _index(facts)
-    unmatched: list[str] = []
-    matched: list[str] = []
-    tokens = extract_numbers(text, locale)
-    for token in tokens:
+    out = []
+    for token in extract_numbers(text, locale):
         if token.kind == "group":
             assert token.key is not None
             pair = _pair(token.key)
@@ -231,13 +227,19 @@ def validate_facts(text: str, facts: Sequence[Fact], locale: Locale) -> Groundin
             ids = index.numbers.get(token.value, [])
         else:
             ids = []
-        if ids:
-            matched.extend(ids)
-        else:
-            unmatched.append(token.raw)
+        out.append((token, ids))
+    return out
+
+
+def validate_facts(text: str, facts: Sequence[Fact], locale: Locale) -> GroundingReport:
+    """Check `text` against exactly these facts (e.g. the ones a sentence cites).
+
+    The caller is responsible for the facts coming from a single agent turn.
+    """
+    pairs = match_numbers(text, facts, locale)
     return GroundingReport(
-        ok=not unmatched,
-        unmatched_numbers=tuple(unmatched),
-        matched_ids=tuple(dict.fromkeys(matched)),
-        checked=len(tokens),
+        ok=all(ids for _, ids in pairs),
+        unmatched_numbers=tuple(t.raw for t, ids in pairs if not ids),
+        matched_ids=tuple(dict.fromkeys(i for _, ids in pairs for i in ids)),
+        checked=len(pairs),
     )

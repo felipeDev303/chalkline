@@ -16,6 +16,7 @@
       <svg class="mark" width="30" height="20" viewBox="0 0 30 20" aria-hidden="true"><rect x="1" y="1" width="28" height="18"/><line x1="15" y1="1" x2="15" y2="19"/><circle cx="15" cy="10" r="3.5"/></svg>
       <span class="wordmark">PITCHSIDE</span>
       <span class="tag" data-i18n="synthetic">synthetic league</span>
+      <span class="mode" id="mode" hidden></span>
     </div>
     <div class="controls">
       <label class="field"><span data-i18n="match">Match</span>
@@ -103,9 +104,11 @@
         <label class="field"><span data-i18n="speed">Speed</span>
           <select id="speed">
             <option value="1">1×</option><option value="4" selected>4×</option>
-            <option value="12">12×</option>
+            <option value="12">12×</option><option value="30">30×</option>
           </select></label>
         <button id="next" class="ghost-btn" data-i18n="next_story">Next story</button>
+        <button id="next-goal" class="ghost-btn" data-i18n="next_goal">Next goal</button>
+        <button id="full" class="ghost-btn" data-i18n="full_screen">Full screen</button>
       </div>
       <div class="legend">
         <span><i class="g-run"></i><span data-i18n="lg_run">The run that made it</span></span>
@@ -133,6 +136,18 @@
           <button data-i18n="ask">Ask</button>
           <button type="button" id="recap" class="ghost-btn" data-i18n="recap">Recap so far</button>
         </form>
+      </section>
+
+      <section class="panel check" id="check-panel">
+        <h2 data-i18n="check_title">Fact-check a line</h2>
+        <p class="fine" data-i18n="check_note">Type any commentator's line: every number is checked against what is known at this minute, no model involved.</p>
+        <form class="ask" id="check-form">
+          <label class="sr" for="check-text" data-i18n="check_title">Fact-check a line</label>
+          <input id="check-text" maxlength="300" data-i18n-ph="check_ph" placeholder="e.g. They have had 85% possession.">
+          <button data-i18n="check">Check</button>
+          <button type="button" id="check-example" class="ghost-btn" data-i18n="check_example">Try an example</button>
+        </form>
+        <div id="check-body"></div>
       </section>
 
       <section class="panel evidence" id="evidence" hidden></section>

@@ -10,6 +10,7 @@
     POST /api/matches/{id}/tools/{name}        run one tool -> ToolResult
     POST /api/matches/{id}/insights            agent desk -> verified Insight (cached)
     POST /api/matches/{id}/stories/{sid}/insights   the same, for one aired story
+    POST /api/matches/{id}/check               fact-check anyone's commentary line
 
 The replay is client-driven: the UI advances as_of_seq and polls the overlay, so the
 server keeps no session state. Insights are cached by request (memory, then Azure Blob
@@ -28,15 +29,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pitchside.agents.clients import ModelChain, foundry_chain
 from pitchside.agents.contracts import Insight, Language, Persona, TurnRequest
 from pitchside.agents.desk import Desk
+from pitchside.agents.fact_check import LineCheck, check_line
 from pitchside.api.cache import DirStore, InsightCache, Store, cacheable, open_store
 from pitchside.api.overlay import (
     OVERLAY_VERSION,
@@ -106,6 +108,13 @@ StoreFactory = Callable[[AsyncExitStack], Awaitable[Store | None]]
 class Audience(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     persona: Persona
+    language: Language
+
+
+class LineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    text: Annotated[str, Field(min_length=1, max_length=MAX_QUESTION_CHARS)]
+    as_of_seq: Annotated[int, Field(ge=0)]
     language: Language
 
 
@@ -227,6 +236,14 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
         if turn.question is not None and len(turn.question) > MAX_QUESTION_CHARS:
             raise HTTPException(422, f"question longer than {MAX_QUESTION_CHARS} characters")
         return await answer(match_id, turn, request)
+
+    @app.post("/api/matches/{match_id}/check", response_model=LineCheck)
+    def check(match_id: str, line: LineRequest) -> LineCheck:
+        """Fact-check a commentary line against what is known at as_of_seq (no model)."""
+        try:
+            return check_line(game(match_id).match, line.text, line.as_of_seq, line.language)
+        except ToolError as err:
+            raise HTTPException(422, str(err)) from err
 
     @app.post("/api/matches/{match_id}/stories/{story_id}/insights", response_model=Insight)
     async def story_insight(match_id: str, story_id: str, audience: Audience,
