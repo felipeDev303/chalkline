@@ -83,6 +83,55 @@ Grid fitted on dev seeds 0-99 (100 matches) by `scripts/fit_xt.py`; evaluated he
 
 Goals are rare per action, so the Brier skill over the base rate is small; calibration (ECE, deciles) is what makes the values quotable.
 
+## Fitted models: expected goals, pass completion, win probability
+
+Fitted on dev seeds 0-99 (100 matches) by `scripts/fit_models.py`; evaluated here on test seeds 200-399 (200 matches). The simulator draws every shot and pass from a latent probability, written only to the truth sidecar: the models never see it, and it is the best any model could do.
+
+| Model | n | Brier | Brier (latent truth) | Brier (base rate) | Mean abs. error to truth | ECE |
+|---|---|---|---|---|---|---|
+| xG (goal per shot) | 5193 | 0.0943 | 0.0938 | 0.0985 | 0.0143 | 0.0146 |
+| xPass (completed pass) | 206457 | 0.1195 | 0.1192 | 0.1299 | 0.0414 | 0.0108 |
+
+xG by decile of the prediction:
+
+| Decile | Predicted | Latent truth | Observed | Shots |
+|---|---|---|---|---|
+| 1 | 0.025 | 0.022 | 0.023 | 519 |
+| 2 | 0.042 | 0.034 | 0.052 | 519 |
+| 3 | 0.058 | 0.052 | 0.044 | 519 |
+| 4 | 0.075 | 0.071 | 0.067 | 520 |
+| 5 | 0.093 | 0.092 | 0.094 | 519 |
+| 6 | 0.115 | 0.113 | 0.129 | 519 |
+| 7 | 0.138 | 0.133 | 0.123 | 520 |
+| 8 | 0.165 | 0.159 | 0.137 | 519 |
+| 9 | 0.196 | 0.193 | 0.208 | 519 |
+| 10 | 0.272 | 0.274 | 0.229 | 520 |
+
+Win probability: every 5 minutes of 200 matches (3400 checkpoints) against the final result, Brier summed over home win, draw and away win (lower is better).
+
+| Model | Brier |
+|---|---|
+| Win probability (score, time, in-match xG rate) | 0.4548 |
+| Score and time only (league-average rates) | 0.4561 |
+| No information (outcome frequencies) | 0.6562 |
+
+Home win by decile of the prediction:
+
+| Decile | Predicted | Observed | Checkpoints |
+|---|---|---|---|
+| 1 | 0.004 | 0.000 | 340 |
+| 2 | 0.046 | 0.021 | 340 |
+| 3 | 0.116 | 0.050 | 340 |
+| 4 | 0.217 | 0.274 | 340 |
+| 5 | 0.311 | 0.315 | 340 |
+| 6 | 0.365 | 0.324 | 340 |
+| 7 | 0.415 | 0.406 | 340 |
+| 8 | 0.632 | 0.671 | 340 |
+| 9 | 0.806 | 0.729 | 340 |
+| 10 | 0.966 | 0.962 | 340 |
+
+Adding the in-match xG rate to score and time lowers the Brier score by 0.0013, a small gain: in this league teams are equal by construction, so a team's chances so far say little about the goals still to come. The model's value here is calibrated probabilities for every moment, not a sharper forecast.
+
 ## Off-ball attribution (planted runs)
 
 Treated matches plant off-ball runs, labelled in the truth sidecar: free direct runs into space, decoy runs that drag the receiver's marker away (the runner does not receive), and tracked direct runs (the marker follows; no space created). The engine (`metrics/off_ball.py`) never reads the labels; its constants were chosen on dev seeds. Test seeds 200-399 (200 matches): 160 treated matches.

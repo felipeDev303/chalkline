@@ -18,11 +18,13 @@ from pitchside.metrics import (
     player_focus,
     pressure_shift,
     shot_profile,
+    shot_quality,
+    win_probability,
 )
 from pitchside.metrics.contract import ToolError, ToolResult, ToolSpec
 
-MODULES = (match_summary, pass_profile, shot_profile, expected_threat, off_ball,
-           control_vs_chaos, pressure_shift, key_moments, player_focus)
+MODULES = (match_summary, pass_profile, shot_profile, shot_quality, expected_threat, off_ball,
+           control_vs_chaos, pressure_shift, win_probability, key_moments, player_focus)
 TOOLS: dict[str, ToolSpec] = {
     m.TOOL_NAME: ToolSpec(name=m.TOOL_NAME, description=m.DESCRIPTION, params=m.Params,
                           run=m.run)

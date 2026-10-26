@@ -7,7 +7,8 @@ pass) keep changing as the match goes on, so they are left to recaps.
 
 Budget (all deterministic, documented in docs/METHODS.md, "Producer"):
 - a story needs `min_importance`, except goals, which always air;
-- stories are at least `gap_s` of match time apart, unless important enough to break in;
+- stories are at least `gap_s` of match time apart, unless a goal or important enough
+  to break in;
 - the same kind of story for the same team does not repeat within `repeat_s`.
 """
 
@@ -24,7 +25,7 @@ AIRABLE = frozenset({"goal", "big_chance", "decisive_run", "swing", "pressure_sh
 PRODUCER: dict[str, float] = {
     "step_events": 25,  # the producer looks again every this many events
     "min_importance": 40,
-    "break_in_importance": 90,  # goals: air regardless of the gap
+    "break_in_importance": 90,  # air regardless of the gap (goals always do)
     "gap_s": 90,
     "repeat_s": 300,
 }
@@ -62,7 +63,7 @@ def air_schedule(match: Match) -> list[Story]:
                if m.kind in AIRABLE and (m.kind, m.seq, m.team_id) not in seen]
         for m in sorted(new, key=lambda m: (-m.importance, m.seq)):
             seen.add((m.kind, m.seq, m.team_id))
-            breaks_in = m.importance >= PRODUCER["break_in_importance"]
+            breaks_in = m.kind == "goal" or m.importance >= PRODUCER["break_in_importance"]
             if m.importance < PRODUCER["min_importance"] and m.kind != "goal":
                 continue
             if aired and not breaks_in:

@@ -17,12 +17,13 @@ client advances `as_of_seq` and asks for the overlay, so the server holds no ses
 | POST | `/api/matches/{id}/insights` | the agent desk's `Insight`; body: `TurnRequest` |
 | POST | `/api/matches/{id}/stories/{story_id}/insights` | the same for one aired story; body: `persona`, `language` |
 
-## Timed overlay (`overlay_version` 1.0.0)
+## Timed overlay (`overlay_version` 1.1.0)
 
 Everything the screen shows next to the match at event `as_of_seq`, computed only from
 events up to it. It is deterministic and needs no model, so it is instant.
 
 - `minute`, `period`, `clock_s`, `score` (team id → goals), `possession_team_id`;
+- `win_probability`: `home`, `draw`, `away` from here (`win_probability` tool; 1.1.0);
 - `last_event`: type, team, player, location (and end and outcome for passes);
 - `players`: the latest known position of all 22 players (absolute metres, 105×68);
 - `stories`: the 5 most recent stories on air, newest first. Each has its `kind`,

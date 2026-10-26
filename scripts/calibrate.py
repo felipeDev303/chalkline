@@ -22,6 +22,8 @@ from detector_eval import (
     score_chaos,
     score_shifts,
 )
+from models_eval import evaluate as evaluate_models
+from models_eval import evaluate_wins
 from off_ball_eval import score as score_off_ball
 from xt_eval import calibrate as calibrate_xt
 
@@ -155,6 +157,61 @@ def _xt_section() -> str:
     return "\n".join(lines)
 
 
+def _models_section() -> str:
+    shots, passes = evaluate_models(TEST_SEEDS)
+    wins = evaluate_wins(TEST_SEEDS)
+    lines = [
+        "## Fitted models: expected goals, pass completion, win probability",
+        "",
+        f"Fitted on dev seeds {_seeds(DEV_SEEDS)} by `scripts/fit_models.py`; evaluated here on "
+        f"test seeds {_seeds(TEST_SEEDS)}. The simulator draws every shot and pass from a "
+        "latent probability, written only to the truth sidecar: the models never see it, "
+        "and it is the best any model could do.",
+        "",
+        "| Model | n | Brier | Brier (latent truth) | Brier (base rate) | Mean abs. error to "
+        "truth | ECE |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for name, c in (("xG (goal per shot)", shots), ("xPass (completed pass)", passes)):
+        lines.append(f"| {name} | {c.n} | {c.brier:.4f} | {c.brier_truth:.4f} | "
+                     f"{c.brier_base:.4f} | {c.mae_truth:.4f} | {c.ece:.4f} |")
+    lines += ["", "xG by decile of the prediction:", "",
+              "| Decile | Predicted | Latent truth | Observed | Shots |", "|---|---|---|---|---|"]
+    lines += [f"| {i} | {p:.3f} | {t:.3f} | {o:.3f} | {k} |"
+              for i, (p, t, o, k) in enumerate(shots.bins, start=1)]
+    lines += [
+        "",
+        f"Win probability: every 5 minutes of {wins.matches} matches ({wins.n} checkpoints) "
+        "against the final result, Brier summed over home win, draw and away win (lower "
+        "is better).",
+        "",
+        "| Model | Brier |",
+        "|---|---|",
+        f"| Win probability (score, time, in-match xG rate) | {wins.brier:.4f} |",
+        f"| Score and time only (league-average rates) | {wins.brier_score_only:.4f} |",
+        f"| No information (outcome frequencies) | {wins.brier_constant:.4f} |",
+        "",
+        "Home win by decile of the prediction:",
+        "",
+        "| Decile | Predicted | Observed | Checkpoints |",
+        "|---|---|---|---|",
+    ]
+    lines += [f"| {i} | {p:.3f} | {o:.3f} | {k} |"
+              for i, (p, o, k) in enumerate(wins.bins, start=1)]
+    gain = wins.brier_score_only - wins.brier
+    effect = (f"lowers the Brier score by {gain:.4f}, a small gain" if gain > 0
+              else f"does not lower the Brier score ({-gain:+.4f})")
+    lines += [
+        "",
+        f"Adding the in-match xG rate to score and time {effect}: in this league teams are "
+        "equal by construction, so a team's chances so far say little about the goals "
+        "still to come. The model's value here is calibrated probabilities for every "
+        "moment, not a sharper forecast.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _off_ball_section() -> str:
     s = score_off_ball(TEST_SEEDS)
 
@@ -277,6 +334,7 @@ def main() -> int:
         "\n".join(lines) + "\n",
         _detector_section(),
         _xt_section(),
+        _models_section(),
         _off_ball_section(),
         QUALITATIVE_REVIEW,
         _known_limitations(mean_pass_length),

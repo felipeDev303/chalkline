@@ -14,32 +14,42 @@ from pitchside.metrics._timeline import MatchView, match_minute, possessions, vi
 from pitchside.metrics.contract import Fact, Table, ToolParams, ToolResult, fact, minute_fact
 from pitchside.metrics.control_vs_chaos import window_bounds, window_stats
 from pitchside.metrics.expected_threat import pass_threat
+from pitchside.metrics.models import odds_one_in
 from pitchside.metrics.off_ball import THRESHOLDS as OFF_BALL_THRESHOLDS
 from pitchside.metrics.off_ball import decisive_runs, run_facts
 from pitchside.metrics.pass_profile import hardest_completed, pass_difficulty, pass_distance_m
 from pitchside.metrics.pressure_shift import CANNOT_TELL_NO_SHIFT, detect_shifts, shift_facts
-from pitchside.metrics.shot_profile import chance_quality
+from pitchside.metrics.win_probability import goal_facts, miss_facts, timeline
 
 TOOL_NAME = "key_moments"
 DESCRIPTION = (
     "Ranked list of the most important moments so far (goals, big chances, swings "
     "between control and chaos, pressure shifts, long passing sequences, the hardest "
     "completed pass, the pass that added the most expected threat, decisive off-ball "
-    "runs, milestones such as a player's 50th pass). Each moment has its "
-    "minute, an importance score and the evidence ids behind it. Use it for recaps, "
-    "highlights or to decide what to talk about."
+    "runs, milestones such as a player's 50th pass). Goals and big chances are ranked "
+    "by how much they moved, or could have moved, the chance of winning. Each moment "
+    "has its minute, an importance score and the evidence ids behind it. Use it for "
+    "recaps, highlights or to decide what to talk about."
 )
 
 THRESHOLDS: dict[str, float] = {
-    # Non-goal shots with chance quality at least this: about 2.5 per team per
-    # simulated match (seeds 0-99), close to typical "big chance" counts.
-    "big_chance_quality": 90,
+    # Missed shots with expected goals at least this: about 2 per team per simulated
+    # match (seeds 0-39), close to typical "big chance" counts.
+    "big_chance_xg": 0.2,
     "sequence_passes": 10,  # possessions with at least this many passes
     "milestone_passes": 50,  # a player's n-th pass
 }
-# Importance scores, documented in docs/METHODS.md.
+# Importance scores, documented in docs/METHODS.md. Goals score 60-100 by how much
+# they moved the scoring team's chance of winning (full marks at a 50-point swing);
+# big chances 40-90 by leverage, xG x the swing a goal would have made (full marks at
+# 0.15, about the 99th percentile of missed shots).
 IMPORTANCE = {
-    "goal": 100.0,
+    "goal_base": 60.0,
+    "goal_span": 40.0,
+    "goal_full_swing": 0.5,
+    "big_chance_base": 40.0,
+    "big_chance_span": 50.0,
+    "big_chance_full_leverage": 0.15,
     "swing": 50.0,
     "pressure_shift": 40.0,
     "hardest_pass": 35.0,
@@ -92,24 +102,29 @@ def all_moments(v: MatchView) -> list[Moment]:
     out: list[Moment] = []
 
     goals = {home: 0, away: 0}
-    for e in v.events:
-        if e.type != "shot":
-            continue
-        mid = f"moment:{{}}@{e.seq}"
-        quality = chance_quality(meta, e)
+    imp = IMPORTANCE
+    for shot in timeline(v.events, meta).shots:
+        e = shot.shot
         if e.outcome == "goal":
             goals[e.team_id] += 1
-            out.append(_moment("goal", e, IMPORTANCE["goal"], [
-                fact(f"{mid.format('goal')}.scoreline", "Scoreline after the goal",
+            mid = f"moment:goal@{e.seq}"
+            weight = min(abs(shot.swing) / imp["goal_full_swing"], 1.0)
+            out.append(_moment("goal", e, imp["goal_base"] + imp["goal_span"] * weight, [
+                fact(f"{mid}.scoreline", "Scoreline after the goal",
                      f"{goals[home]}-{goals[away]}", "scoreline"),
-                fact(f"{mid.format('goal')}.chance_quality", "Chance quality", quality, "score"),
+                fact(f"{mid}.xg", "Expected goals of the chance", shot.xg, "xg"),
+                *goal_facts(shot, mid, meta),
             ], team_id=e.team_id, player_id=e.player_id))
-        elif quality >= THRESHOLDS["big_chance_quality"]:
-            out.append(_moment("big_chance", e, 40 + 0.4 * quality, [
-                fact(f"{mid.format('big_chance')}.chance_quality", "Chance quality", quality,
-                     "score"),
-                fact(f"{mid.format('big_chance')}.outcome", "Outcome",
-                     e.outcome.replace("_", " "), "label"),
+        elif shot.xg >= THRESHOLDS["big_chance_xg"]:
+            mid = f"moment:big_chance@{e.seq}"
+            weight = min(max(shot.leverage, 0.0) / imp["big_chance_full_leverage"], 1.0)
+            out.append(_moment("big_chance", e,
+                               imp["big_chance_base"] + imp["big_chance_span"] * weight, [
+                fact(f"{mid}.xg", "Expected goals of the chance", shot.xg, "xg"),
+                fact(f"{mid}.odds_one_in", "Scored about once every this many such shots",
+                     odds_one_in(shot.xg), "count"),
+                fact(f"{mid}.outcome", "Outcome", e.outcome.replace("_", " "), "label"),
+                *miss_facts(shot, mid, meta),
             ], team_id=e.team_id, player_id=e.player_id))
 
     eligible = [s for s in window_stats(v) if s.eligible and s.window.events]
@@ -213,12 +228,15 @@ def run(match: Match, params: Params) -> ToolResult:
                              "evidence_ids"), rows=rows) if rows else None,
         sample_size=len(candidates),
         method=(
-            "Candidate moments are scored with fixed weights (goal 100, big chance 40 + 0.4 "
-            "x quality, control/chaos swing 50, pressure shift 40, hardest pass 35, long "
-            "sequence 30 + 2 per pass beyond 10 up to 90, milestone 20) and ranked by score, "
-            "then time."
+            "Goals score 60-100 by how much they moved the scoring team's chance of "
+            "winning; missed big chances (xG 0.2 or more) 40-90 by their leverage, xG times "
+            "the change a goal would have made. Other moments have fixed weights "
+            "(decisive run 55, control/chaos swing 50, pressure shift 40, hardest pass and "
+            "most threatening pass 35, long sequence 30 + 2 per pass beyond 10, milestone "
+            "20). Ranked by score, then time."
         ),
-        caveats=("Importance is a fixed editorial weighting, not a measure of match impact.",
+        caveats=("Win-probability impact comes from a model with equal teams and no game-"
+                 "state effects; weights for the other moments are editorial.",
                  "Pressure shifts catch clear increases in pressing but miss most drops; "
                  "swings use percentile-based thresholds (docs/data/CALIBRATION.md)."),
         cannot_tell=(CANNOT_TELL_NO_SHIFT,) + (() if candidates else ("No notable moment yet.",)),

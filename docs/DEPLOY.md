@@ -26,9 +26,11 @@ az deployment group create -g rg-pitchside -n pitchside-app -f infra/app.bicep `
 # 2. Build and push (Entra ID login, no admin user).
 $acr = az deployment group show -g rg-pitchside -n pitchside-app --query properties.outputs.registryName.value -o tsv
 az acr login -n $acr
-$img = "$acr.azurecr.io/pitchside:$(git rev-parse --short HEAD)"
-docker build -t $img .
-docker push $img
+$tag = "$acr.azurecr.io/pitchside:$(git rev-parse --short HEAD)"
+docker build -t $tag .
+docker push $tag
+# Deploy by digest: a tag the app once failed to find can stay "not found" for a while.
+$img = "$acr.azurecr.io/pitchside@" + (az acr repository show -n $acr --image $tag.Split('/')[1] --query digest -o tsv)
 
 # 3. Point the app at the image.
 az deployment group create -g rg-pitchside -n pitchside-app -f infra/app.bicep `

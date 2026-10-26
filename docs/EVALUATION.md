@@ -9,6 +9,9 @@ held out.
 | Realism of the simulated league | [CALIBRATION.md](data/CALIBRATION.md) | passes, completion, shots, goals inside targets, all at least 2.5 standard errors from a bound |
 | Pressing-change detector vs planted regimes | [CALIBRATION.md](data/CALIBRATION.md) | precision 0.71, recall 0.23, 0.68 false alarms per control match (1.2 before tuning) |
 | Expected threat (xT) calibration | [CALIBRATION.md](data/CALIBRATION.md) | ECE 0.0012 over 212,613 actions |
+| Expected goals (xG) vs the simulator's true scoring probability | [CALIBRATION.md](data/CALIBRATION.md) | mean absolute error 0.014 over 5,193 shots; Brier 0.0943 vs 0.0938 for the true probabilities themselves |
+| Pass completion (xPass) vs the true completion probability | [CALIBRATION.md](data/CALIBRATION.md) | mean absolute error 0.041 over 206,457 passes; ECE 0.011 |
+| Win probability vs final results | [CALIBRATION.md](data/CALIBRATION.md) | Brier 0.455 every 5 minutes of 200 matches (no information: 0.656; score and time only: 0.456) |
 | Off-ball run attribution vs planted runs | [CALIBRATION.md](data/CALIBRATION.md) | credits the runner of an effective run first 86% of the time (credit the recipient: 44%, whoever moved most: 54%); credits a run that created no space 11% (those rules: 75%, 55%); AUC 0.94 |
 | Agent desk vs single agent | [round v1](evaluation/ablation-v1.md), [round v2](evaluation/ablation-v2.md) | see below |
 

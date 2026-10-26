@@ -10,7 +10,7 @@ const T = {
     control_without: "…and without it",
     scene_note: "Counterfactual: the runner moves only with their team's block, and any defender who followed them goes back too.",
     back_live: "Back to live", next_story: "Next story", on_air: "On air",
-    replay: "Replay", speed: "Speed", final: "FT", lg_run: "The run that made it", lg_goal: "Goal",
+    replay: "Replay", speed: "Speed", final: "FT", draw: "Draw", win_prob: "Win probability", lg_run: "The run that made it", lg_goal: "Goal",
     lg_other: "Other story", lg_sides: "Above the line: home · below: away · only what has aired so far",
     on_air_note: "Chosen live by the producer agent from what is known so far. Tap a story for the desk's verified explanation.",
     desk: "The desk", desk_empty: "Pick a story, ask a question or request a recap.",
@@ -39,7 +39,8 @@ const T = {
     control_without: "…y sin ella",
     scene_note: "Contrafactual: el corredor se mueve solo con el bloque de su equipo, y el defensor que lo siguió también vuelve.",
     back_live: "Volver al vivo", next_story: "Siguiente historia", on_air: "Al aire",
-    replay: "Repetición", speed: "Velocidad", final: "FIN", lg_run: "La carrera que lo hizo posible",
+    replay: "Repetición", speed: "Velocidad", final: "FIN", draw: "Empate",
+    win_prob: "Probabilidad de ganar", lg_run: "La carrera que lo hizo posible",
     lg_goal: "Gol", lg_other: "Otra historia",
     lg_sides: "Arriba: local · abajo: visita · solo lo que ya salió al aire",
     on_air_note: "Las elige en vivo el agente productor con lo que se sabe hasta ahora. Toca una historia para la explicación verificada de la mesa.",
@@ -83,6 +84,8 @@ cannot read; a test enforces it.</p>
 <tr><td>Realism of the simulated league</td><td>passes, completion, shots and goals inside football-realistic targets, each at least 2.5 standard errors from a bound</td></tr>
 <tr><td>Pressing-change detector vs planted spells</td><td>precision 0.71, recall 0.23; 0.68 false alarms per match with nothing planted</td></tr>
 <tr><td>Expected threat (xT)</td><td>calibration error 0.0012 over 212,613 actions</td></tr>
+<tr><td>Expected goals (xG)</td><td>within 0.014 on average of the simulator's true scoring probability, over 5,193 shots</td></tr>
+<tr><td>Win probability</td><td>Brier 0.455 against final results every 5 minutes of 200 matches (no information: 0.656)</td></tr>
 <tr><td>"The run that made it" vs planted runs</td><td>credits the real runner of a run that created space first 86% of the time (crediting the receiver: 44%; whoever moved most: 54%); credits a run that created no space 11% (75%, 55%); AUC 0.94</td></tr>
 <tr><td>Verifier agent (ablation, 80 held-out moments)</td><td>a single agent with tools airs an unsupported number, wrong attribution or misspelled name 35–40% of the time; with the verifier in the loop, 0%</td></tr></table>
 <p class="fine">The overlay is a documented JSON contract: <a href="/api/overlay/schema">/api/overlay/schema</a> · API: <a href="/docs">/docs</a>. Methods: docs/METHODS.md and docs/EVALUATION.md in the repository.</p>`,
@@ -95,6 +98,8 @@ agentes no pueden leer; un test lo garantiza.</p>
 <tr><td>Realismo de la liga simulada</td><td>pases, precisión, remates y goles dentro de rangos realistas, cada uno a 2,5 errores estándar o más del borde</td></tr>
 <tr><td>Detector de cambios de presión vs rachas plantadas</td><td>precisión 0,71, recall 0,23; 0,68 falsas alarmas por partido sin nada plantado</td></tr>
 <tr><td>Expected threat (xT)</td><td>error de calibración 0,0012 en 212.613 acciones</td></tr>
+<tr><td>Goles esperados (xG)</td><td>a 0,014 en promedio de la probabilidad real de gol del simulador, en 5.193 remates</td></tr>
+<tr><td>Probabilidad de ganar</td><td>Brier 0,455 contra el resultado final cada 5 minutos de 200 partidos (sin información: 0,656)</td></tr>
 <tr><td>"La carrera que lo hizo posible" vs carreras plantadas</td><td>acredita primero al corredor real de una carrera que generó espacio el 86% de las veces (acreditar al receptor: 44%; al que más se movió: 54%); acredita una carrera que no generó espacio el 11% (75%, 55%); AUC 0,94</td></tr>
 <tr><td>Agente verificador (ablación, 80 momentos reservados)</td><td>un solo agente con herramientas publica un número sin respaldo, una atribución errónea o un nombre mal escrito el 35–40% de las veces; con el verificador, 0%</td></tr></table>
 <p class="fine">El overlay es un contrato JSON documentado: <a href="/api/overlay/schema">/api/overlay/schema</a> · API: <a href="/docs">/docs</a>. Métodos: docs/METHODS.md y docs/EVALUATION.md en el repositorio.</p>`,
@@ -309,6 +314,13 @@ function applyOverlay() {
   $("#away-score").textContent = o.score[S.meta.away.team_id];
   const done = S.seq >= S.last;
   $("#clock").textContent = done ? t("final") : o.minute;
+  const w = o.win_probability;
+  const pct = (p) => `${Math.round(100 * p)}%`;
+  $("#wp-h").style.width = pct(w.home); $("#wp-d").style.width = pct(w.draw); $("#wp-a").style.width = pct(w.away);
+  $("#wp-hl").textContent = `${S.meta.home.short_name} ${pct(w.home)}`;
+  $("#wp-dl").textContent = `${t("draw")} ${pct(w.draw)}`;
+  $("#wp-al").textContent = `${pct(w.away)} ${S.meta.away.short_name}`;
+  $("#wp").setAttribute("aria-label", `${t("win_prob")}: ${$("#wp-hl").textContent}, ${$("#wp-dl").textContent}, ${$("#wp-al").textContent}`);
   const played = done ? 1 : Math.min(1, ((o.period - 1) * 2700 + o.clock_s) / 5400);
   $("#ring").setAttribute("stroke-dasharray", `${(43.98 * played).toFixed(2)} 44`);
   if (!S.scene) renderLive();

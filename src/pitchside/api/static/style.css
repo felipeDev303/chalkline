@@ -113,6 +113,19 @@ select, .ask input {
 .ring { fill: none; stroke: var(--floodlight); stroke-width: 3; transition: stroke-dasharray .35s linear; }
 @media (max-width: 600px) { .bug { font-size: 16px; top: 8px; left: 8px; } .bug > span { padding: 6px 8px; } }
 
+.wp {
+  position: absolute; top: 58px; left: 12px; width: 236px; background: rgba(11, 15, 19, .88);
+  padding: 6px 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+}
+.wp-bar { display: flex; height: 6px; }
+.wp-bar span { display: block; height: 100%; transition: width .35s linear; }
+.wp-bar .h { background: var(--home); }
+.wp-bar .d { background: var(--neutral); }
+.wp-bar .a { background: var(--away); }
+.wp-labels { display: flex; justify-content: space-between; margin-top: 4px; font: 600 12px var(--display); letter-spacing: .06em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wp-labels span:first-child { color: var(--home); }
+.wp-labels span:last-child { color: var(--away); }
+@media (max-width: 600px) { .wp { top: 44px; left: 8px; width: 190px; padding: 4px 6px; } }
 .scene-ctl { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .scene-ctl[hidden] { display: none; }
 .chip { background: var(--mint); color: var(--night); font-size: 14px; padding: 4px 10px; }

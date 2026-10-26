@@ -37,15 +37,22 @@ def headline(m: Moment, metadata: MatchMetadata, language: Language) -> str:
     home, away = metadata.home.name, metadata.away.name
 
     if m.kind == "goal":
-        return (f"{f['minute']} GOAL! {team} score: {home} {f['scoreline']} {away}." if en
-                else f"¡Gol de {team} en el {f['minute']}! {home} {f['scoreline']} {away}.")
+        if en:
+            return (f"{f['minute']} GOAL! {team} score: {home} {f['scoreline']} {away}. "
+                    f"Their chance of winning goes from {f['win_before']} to "
+                    f"{f['win_after']}.")
+        return (f"¡Gol de {team} en el {f['minute']}! {home} {f['scoreline']} {away}. "
+                f"Su probabilidad de ganar pasa de {f['win_before']} a {f['win_after']}.")
     if m.kind == "big_chance":
         if en:
-            return (f"Big chance for {team} at {f['minute']}: {player} shoots from a "
-                    f"position of chance quality {f['chance_quality']}, {f['outcome']}.")
-        return (f"Ocasión clara de {team} en el {f['minute']}: {player} remata desde una "
-                f"posición de calidad {f['chance_quality']}, "
-                f"{OUTCOME_ES.get(f['outcome'], f['outcome'])}.")
+            return (f"Big chance for {team} at {f['minute']}: {player}'s shot was worth "
+                    f"{f['xg']} xG (scored about once every {f['odds_one_in']} shots), "
+                    f"{f['outcome']}. A goal would have lifted their chance of winning from "
+                    f"{f['win_now']} to {f['win_if_scored']}.")
+        return (f"Ocasión clara de {team} en el {f['minute']}: el remate de {player} valía "
+                f"{f['xg']} xG (entra una vez cada {f['odds_one_in']} tiros), "
+                f"{OUTCOME_ES.get(f['outcome'], f['outcome'])}. Un gol habría llevado su "
+                f"probabilidad de ganar de {f['win_now']} a {f['win_if_scored']}.")
     if m.kind == "decisive_run":
         own = f["kind"] == "own run"
         if en:

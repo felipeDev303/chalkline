@@ -107,7 +107,7 @@ this document and the code disagree.
 - **Thresholds:** `min_passes` = 15 (completion), `min_in_play_s` = 60 (possession share).
 - **Caveats:** possession is time-based, not pass-based, so it can differ from broadcast
   figures.
-- **Cannot tell:** who deserved to win; quality of the shots (use `shot_profile`).
+- **Cannot tell:** who deserved to win; quality of the shots (use `shot_quality`).
 
 ### `pass_profile`
 
@@ -134,18 +134,58 @@ this document and the code disagree.
 
 ### `shot_profile`
 
-- **Definition:** shots, on target, goals, fastest and mean shot speed, best and mean
-  chance quality for a team or a player.
-- **Formula:** **chance quality** (0-100) = angle between the posts seen from the shot
-  location (goal 7.32 m wide), divided by that angle from the penalty spot (0.6423 rad),
-  capped at 1, x 100; headers x 0.7. A geometric index, unrelated to the simulator's
-  internal scoring. Check against outcomes over simulated seeds 0-99 (2,626 shots):
-  conversion rises steadily with quality, 3.3% (0-20), 5.6% (20-40), 9.1% (40-60),
-  13.1% (60-80), 17.1% (80-100), 25.1% (100).
+- **Definition:** shots, on target, goals, expected goals (xG, the sum of the shots'
+  xG), fastest and mean shot speed, best chance (xG and minute) and xG per shot for a
+  team or a player.
+- **Formula:** xG from the fitted model below (Expected goals).
 - **Thresholds:** `min_shots` = 3 (means).
-- **Caveats:** not a probability and not calibrated to real conversion rates; ignores
-  defenders and the goalkeeper (no tracking data).
+- **Caveats:** xG ignores where defenders and the goalkeeper stand.
 - **Cannot tell:** how well a shot was struck beyond its speed; deflections.
+
+### Expected goals and pass completion (fitted models)
+
+- **Models:** two logistic regressions fitted by IRLS (Newton's method) in numpy by
+  `scripts/fit_models.py` on simulated seeds 0-99, written as `metrics/_models.py` (no
+  file reads at run time). **xG**: P(goal | shot) from distance to the goal centre, the
+  angle between the posts seen from the shot (`atan2` of the two post vectors), header,
+  under pressure. **xPass**: P(complete | pass) from length, forward progress, height
+  (high, low; ground is the base), under pressure, ending in the final third, ending
+  in the box.
+- **Explanation:** each feature's effect on a shot is `coef x (value - training mean)`
+  in log-odds; with the average shot's log-odds the effects add up to the shot's, so
+  "xG low because the angle was tight and the shooter was pressed" is a sum of facts.
+- **Check:** the simulator draws every shot and pass from a latent probability and
+  writes it to the truth sidecar only. On held-out seeds 200-399 the models are
+  compared with those latent probabilities and with outcomes (Brier, deciles, mean
+  absolute error to the truth): `docs/data/CALIBRATION.md`.
+
+### `shot_quality`
+
+- **Definition:** one shot (`scope` latest or best so far): minute, shooter, xG, "scored
+  about once every N such shots" (N = round(1 / xG), so narratives never compute it),
+  outcome, and the effects that move its xG most; plus each team's goals and total xG
+  ("the table lies" when they disagree).
+- **Thresholds:** `min_effect` = 0.1 (log-odds; smaller effects are not listed).
+- **Caveats:** defenders and the goalkeeper's position are not in the model.
+- **Cannot tell:** whether a shot was well struck beyond where it was taken from.
+
+### `win_probability`
+
+- **Definition:** chance of a home win, a draw and an away win now; each goal's
+  before and after for the scoring team (`scope` goals); the missed chance with the
+  highest leverage, with the scoring team's chance of winning at the time and had it
+  gone in. A table of checkpoints every `every_min` minutes.
+- **Formula:** goals still to come are independent Poisson for each team, summed up to
+  `max_goals` further goals and renormalised. Rate for the time left:
+  `lambda = (t_left / 90) x ((1 - a) x prior + a x xG_so_far / t_played x 90)`,
+  `a = t_played / 90`, prior = the league's goals per team per 90 (1.605, seeds 0-99).
+  Added time counts as no time left. A shot's swing = win probability had it gone in
+  minus just before it; leverage = xG x swing.
+- **Thresholds:** `max_goals` = 10, `every_min` = 5, `goals_shown` = 6.
+- **Caveats:** equal teams before kickoff; no game-state effects (a leading team does
+  not sit back) and no red cards. Calibrated against final results on held-out seeds
+  (`docs/data/CALIBRATION.md`).
+- **Cannot tell:** who will win: these are probabilities, not a prediction.
 
 ### `threat_profile`
 
@@ -251,16 +291,23 @@ this document and the code disagree.
 
 - **Definition:** ranked moments up to `as_of_seq`, each with its minute, an importance
   score and its own facts (evidence ids `moment:<kind>@<seq>...`).
-- **Formula:** importance: goal 100; big chance (non-goal shot with chance quality >=
-  `big_chance_quality`) 40 + 0.4 x quality; control/chaos swing (consecutive classified
-  windows going control to chaos or back) 50; pressure shift 40; hardest completed pass
-  35; the completed pass that added the most expected threat 35; decisive off-ball run
-  55 (the 3 strongest); passing sequence (possession with >= `sequence_passes` passes) 30 + 2 per pass
-  beyond 10, capped at 90 so it never outranks a goal; a player's `milestone_passes`-th
-  pass 20. Ranked by importance, then time.
-- **Thresholds:** `big_chance_quality` = 90 (about 2.5 per team per simulated match),
+- **Formula:** goals and big chances are scored by match impact (`win_probability`): a
+  goal 60 + 40 x min(|swing| / 0.5, 1), so goals rank among themselves by how much they
+  moved the scoring team's chance of winning; a big chance (missed shot with xG >=
+  `big_chance_xg`) 40 + 50 x min(leverage / 0.15, 1), so a 0.4 chance at 88' with the
+  score level outranks the same chance at 5'. Goal facts add the xG and the win
+  probability before and after; big chances add xG, "once every N shots", and the win
+  probability at the time and had it gone in. Other moments keep fixed weights:
+  decisive off-ball run 55 (the 3 strongest); control/chaos swing (consecutive
+  classified windows going control to chaos or back) 50; pressure shift 40; hardest
+  completed pass 35; the completed pass that added the most expected threat 35;
+  passing sequence (possession with >= `sequence_passes` passes) 30 + 2 per pass beyond
+  10, capped at 90; a player's `milestone_passes`-th pass 20. Ranked by importance,
+  then time.
+- **Thresholds:** `big_chance_xg` = 0.2 (about 2 per team per simulated match),
   `sequence_passes` = 10, `milestone_passes` = 50.
-- **Caveats:** importance is a fixed editorial weighting, not a measure of impact.
+- **Caveats:** impact comes from a win-probability model with equal teams and no
+  game-state effects; the weights of the other moments are editorial.
 - **Cannot tell:** off-ball runs that no pass used.
 
 ### `player_focus`
@@ -281,8 +328,8 @@ replay. It is deterministic and causal: every `step_events` events it computes
 airs one when:
 
 - its importance is at least `min_importance` (goals always qualify);
-- at least `gap_s` seconds of match time have passed since the last story, unless its
-  importance is at least `break_in_importance` (goals);
+- at least `gap_s` seconds of match time have passed since the last story, unless it
+  is a goal or its importance is at least `break_in_importance`;
 - no story of the same kind for the same team aired in the last `repeat_s` seconds.
 
 Thresholds: `step_events` = 25, `min_importance` = 40, `break_in_importance` = 90,

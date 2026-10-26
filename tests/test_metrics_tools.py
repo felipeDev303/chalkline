@@ -3,6 +3,8 @@
 Event list and possession arithmetic: tests/mini_match.py.
 """
 
+import math
+
 import pytest
 from mini_match import build_mini_match, build_pressure_match
 
@@ -15,7 +17,10 @@ from pitchside.metrics import (
     pressure_shift,
     shot_profile,
 )
+from pitchside.metrics._models import XG
 from pitchside.metrics.contract import ToolError
+from pitchside.metrics.features import goal_mouth_angle
+from pitchside.metrics.models import xg
 
 
 @pytest.fixture(scope="module")
@@ -100,14 +105,17 @@ def test_pass_profile_unknown_subject(mini):
 
 # --- shot_profile ----------------------------------------------------------------
 
-def test_chance_quality_by_hand(mini):
-    # T2 attacks x = 0 in period 1, so (12, 30) is (93, 38) in its frame. Posts at
-    # y = 30.34 and 37.66: angle = atan2(87.84, 146.60) = 0.5397 rad. From the penalty
-    # spot: 2 * atan(3.66 / 11) = 0.6423 rad. 0.5397 / 0.6423 = 84.03%.
-    assert shot_profile.chance_quality(mini.metadata, mini.events[7]) == pytest.approx(
-        84.03, abs=0.01)
-    assert shot_profile.goal_mouth_angle(94.0, 34.0) == pytest.approx(
-        shot_profile.REFERENCE_ANGLE)
+def mini_shot_xg():
+    # T2 attacks x = 0 in period 1, so (12, 30) is (93, 38) in its frame: 12.649 m from
+    # the goal centre (105, 34). Posts at y = 30.34 and 37.66: angle = atan2(87.84,
+    # 146.6044) = 0.53980 rad. Right foot, not pressed: only distance and angle count.
+    z = XG.intercept + XG.coefs[0] * math.hypot(12, 4) + XG.coefs[1] * 0.53980
+    return 1 / (1 + math.exp(-z))
+
+
+def test_xg_by_hand(mini):
+    assert goal_mouth_angle(93.0, 38.0) == pytest.approx(0.53980, abs=1e-5)
+    assert xg(mini.metadata, mini.events[7]) == pytest.approx(mini_shot_xg(), abs=1e-5)
 
 
 def test_shot_profile(mini):
@@ -117,8 +125,9 @@ def test_shot_profile(mini):
     assert (d["shot.team:T2.shots"], d["shot.team:T2.on_target"], d["shot.team:T2.goals"]) == (
         "1", "1", "1")
     assert d["shot.team:T2.max_speed_kmh"] == "95.0 km/h"
-    assert (d["shot.team:T2.best_chance.quality"], d["shot.team:T2.best_chance.minute"]) == (
-        "84", "1'")
+    expected = f"{mini_shot_xg():.2f}"
+    assert (d["shot.team:T2.xg"], d["shot.team:T2.best_chance.xg"],
+            d["shot.team:T2.best_chance.minute"]) == (expected, expected, "1'")
     assert "shot.team:T2.mean_speed_kmh" not in d and result.cannot_tell  # 1 shot < 3
 
 
@@ -241,11 +250,15 @@ def test_control_vs_chaos_latest_scope():
 
 def test_key_moments(mini):
     result = key_moments.run(mini, key_moments.Params(as_of_seq=19, limit=5))
-    # Candidates: T2's goal (100) and the hardest completed pass, seq 2 (35).
+    # Candidates: T2's goal (60-100 by win-probability swing) and the hardest completed
+    # pass, seq 2 (35).
     assert [row[2] for row in result.table.rows] == ["goal", "hardest_pass"]
+    assert 60 <= result.table.rows[0][3] <= 100
     d = displays(result)
     assert (d["moment:goal@7.minute"], d["moment:goal@7.scoreline"],
-            d["moment:goal@7.chance_quality"]) == ("1'", "0-1", "84")
+            d["moment:goal@7.xg"]) == ("1'", "0-1", f"{mini_shot_xg():.2f}")
+    before, after = (int(d[f"moment:goal@7.win_{k}"].rstrip("%")) for k in ("before", "after"))
+    assert before < after  # scoring raises the scorer's chance of winning
     assert (d["moment:hardest_pass@2.difficulty"], d["moment:hardest_pass@2.distance_m"]) == (
         "55", "34.0 m")
 

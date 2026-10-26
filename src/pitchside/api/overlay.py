@@ -21,8 +21,9 @@ from pitchside.events.schema import MatchEvent
 from pitchside.metrics._timeline import match_minute, possessor_after, view
 from pitchside.metrics.contract import Fact, minute_display
 from pitchside.metrics.off_ball import pass_credits
+from pitchside.metrics.win_probability import timeline
 
-OVERLAY_VERSION = "1.0.0"
+OVERLAY_VERSION = "1.1.0"  # 1.1.0: win_probability
 
 
 class _Strict(BaseModel):
@@ -77,14 +78,23 @@ class LastEvent(_Strict):
     outcome: str | None = None
 
 
+class WinProbability(_Strict):
+    """Chance of each final result from here (metrics/win_probability.py)."""
+
+    home: float
+    draw: float
+    away: float
+
+
 class Overlay(_Strict):
-    overlay_version: Literal["1.0.0"] = OVERLAY_VERSION
+    overlay_version: Literal["1.1.0"] = OVERLAY_VERSION
     match_id: str
     as_of_seq: int
     period: int
     clock_s: float
     minute: str
     score: dict[str, int]  # team_id -> goals
+    win_probability: WinProbability
     possession_team_id: str | None
     last_event: LastEvent
     players: tuple[PlayerDot, ...]  # latest known positions; empty without tracking
@@ -158,9 +168,12 @@ def overlay(match: Match, schedule: list[Story], as_of_seq: int,
     built = stories if stories is not None else {}
     aired = tuple(built.get(s.story_id) or story_out(match, s)
                   for s in on_air(schedule, v.as_of_seq))
+    now = timeline(events, match.metadata).now
     return Overlay(
         match_id=match.metadata.match_id, as_of_seq=v.as_of_seq, period=last.period,
         clock_s=last.clock_s, minute=minute_display(minute, added), score=score,
+        win_probability=WinProbability(home=round(now.home, 3), draw=round(now.draw, 3),
+                                       away=round(now.away, 3)),
         possession_team_id=possessor_after(events)[-1],
         last_event=LastEvent(
             seq=last.seq, type=last.type, team_id=last.team_id, player_id=last.player_id,

@@ -35,6 +35,8 @@ Rules you must follow:
 - Do not claim anything listed under "cannot tell". In particular, a missing
   detection is not evidence that nothing changed.
 - No percentages or rates the facts do not give; no player names with numbers.
+- For a "once every N shots" fact write "once every N shots" ("una vez cada N tiros"),
+  never "1 in N": the 1 is not a fact.
 Return JSON matching the schema: {"sentences": [{"text": ..., "evidence_ids": [...]}]}."""
 
 PERSONA_GUIDE = {
