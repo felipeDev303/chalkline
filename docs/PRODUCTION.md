@@ -1,6 +1,6 @@
 # Path to production
 
-Pitchside runs today on synthetic matches, in one container on Azure Container Apps.
+Chalkline runs today on synthetic matches, in one container on Azure Container Apps.
 This is how it becomes a production service for a broadcaster, a league app or a club,
 and what does not have to change.
 
@@ -44,7 +44,7 @@ evidence changes:
 2. **Validate the detectors with analysts.** Pressing shifts and decisive runs flagged
    on a held-out season are labelled by analysts; precision and recall are reported the
    same way as in `docs/data/CALIBRATION.md`.
-3. **Shadow mode first.** Pitchside's stories and narratives run alongside a human
+3. **Shadow mode first.** Chalkline's stories and narratives run alongside a human
    graphics desk; only what the desk would have aired, and what passes the verifier, is
    compared before anything goes to air.
 4. **Monitor drift.** Calibration and verifier rejection rates are tracked per match;

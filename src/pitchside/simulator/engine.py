@@ -53,7 +53,7 @@ from pitchside.simulator.rng import Rng
 from pitchside.simulator.runs import ActiveRun, RunLabel
 
 PERIOD_S = 45 * 60
-COMPETITION = "Pitchside Synthetic League"
+COMPETITION = "Chalkline Synthetic League"
 SEASON_START = datetime(2026, 8, 8, tzinfo=UTC)
 KICKOFF_MINUTES = (12 * 60 + 30, 15 * 60, 17 * 60 + 30, 20 * 60)
 

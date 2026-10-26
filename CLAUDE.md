@@ -1,4 +1,7 @@
-# Pitchside — Inside the Game hackathon (Microsoft × Premier League)
+# Chalkline — Inside the Game hackathon (Microsoft × Premier League)
+
+Product name: Chalkline. The Python package, env vars (`PITCHSIDE_*`) and Azure
+resource names keep the working name `pitchside`.
 
 Explainable, personalized match intelligence from **synthetic** football events.
 Deadline: Oct 27 2026, 23:59 PT. All submission materials in English.

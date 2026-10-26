@@ -1,4 +1,4 @@
-// Insight cache for the Pitchside demo: one keyless storage account and one private
+// Insight cache for the Chalkline demo: one keyless storage account and one private
 // container. Readers and writers get Storage Blob Data Contributor (Entra ID only):
 // the container app's managed identity, and the developer who runs the precompute.
 // Deployed as a module of infra/app.bicep.

@@ -1,4 +1,4 @@
-// Microsoft Foundry for the Pitchside agent desk: one AI Services account (keyless),
+// Microsoft Foundry for the Chalkline agent desk: one AI Services account (keyless),
 // one project, a primary and a fallback model deployment, and data-plane access.
 //
 //   az deployment group create -g rg-pitchside -f infra/foundry.bicep \
@@ -50,7 +50,7 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' = {
   location: location
   identity: { type: 'SystemAssigned' }
   properties: {
-    displayName: 'Pitchside'
+    displayName: 'Chalkline'
     description: 'Explainable match intelligence from synthetic football events.'
   }
 }

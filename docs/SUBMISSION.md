@@ -5,11 +5,11 @@ the video is uploaded.
 
 ## Project name
 
-Pitchside
+Chalkline
 
 ## One-line description
 
-Pitchside replays a football match and tells you what mattered and why, with every
+Chalkline replays a football match and tells you what mattered and why, with every
 number computed by tested code, every sentence checked by a verifier agent, and every
 claim about the game measured against ground truth.
 
@@ -29,7 +29,7 @@ what was claimed about it, and models are judged by eye.
 
 ## What it does
 
-Pitchside is one pipeline in five stages, all on synthetic data:
+Chalkline is one pipeline in five stages, all on synthetic data:
 
 1. **Ingest.** A seeded simulator streams a football-realistic match: passes, shots,
    tackles, pressure and possession, with all 22 players' positions at every event. It
@@ -84,7 +84,7 @@ quality over one agent plus the verifier.
 
 ## Category
 
-**Best Enterprise Solution.** Pitchside is built around the controls production needs:
+**Best Enterprise Solution.** Chalkline is built around the controls production needs:
 every number traceable to a deterministic, tested tool and a documented method; every
 AI sentence verified before it airs, with a recorded fallback when it is not; models
 that are calibrated, auditable code instead of a black-box endpoint; keyless identity
@@ -93,7 +93,7 @@ Its claims are measured on held-out data and published, including what did not w
 The path to a live feed (Event Hubs, Web PubSub, Cosmos DB, Foundry evaluations) is in
 `docs/PRODUCTION.md`.
 
-*Alternative, if entering Best Multi-Agent System:* Pitchside's agents have distinct
+*Alternative, if entering Best Multi-Agent System:* Chalkline's agents have distinct
 roles and hand off through typed messages: a producer decides what airs from what is
 known so far, an analyst picks among the metric tools (also served over MCP), a
 narrator writes cited sentences, and a

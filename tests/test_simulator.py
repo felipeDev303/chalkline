@@ -12,7 +12,7 @@ from pitchside.simulator.realism import CALIBRATION_SEEDS, TARGETS, summarize
 
 # Update deliberately when the simulator's output changes, and rerun
 # scripts/calibrate.py so docs/data/CALIBRATION.md matches.
-GOLDEN_SEED_42_SHA256 = "06f0e860a0a0e19c2ec0609c30737521742ead992999fc885f428f6c1611d789"
+GOLDEN_SEED_42_SHA256 = "6084bd3ce89eb04cf457ecfef81ae2f0815a75ca998e2538c96b37fdaa9cc465"
 
 
 @pytest.fixture(scope="module")

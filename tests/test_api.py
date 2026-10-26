@@ -165,7 +165,7 @@ def test_health_and_matches(client):
     assert meta["synthetic"] is True and len(meta["home"]["players"]) == 11
     assert client.get("/api/matches/nope").status_code == 404
     page = client.get("/")
-    assert page.status_code == 200 and "<title>Pitchside</title>" in page.text
+    assert page.status_code == 200 and "<title>Chalkline</title>" in page.text
     assert client.get("/app.js").status_code == 200
 
 

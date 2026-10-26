@@ -1,6 +1,6 @@
 # Evaluation
 
-Every claim Pitchside makes is measured on simulated matches that were not used to
+Every claim Chalkline makes is measured on simulated matches that were not used to
 build or tune it. Seeds 0-99 are for development and tuning; seeds 200 and up are
 held out.
 

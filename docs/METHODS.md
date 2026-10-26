@@ -1,6 +1,6 @@
 # Methods
 
-How every number Pitchside shows is computed. Code: `src/pitchside/metrics/`.
+How every number Chalkline shows is computed. Code: `src/pitchside/metrics/`.
 Metrics consume only the event contract (`src/pitchside/events/`): never simulator
 internals, never ground-truth sidecars (both enforced by `tests/test_metrics_isolation.py`).
 

@@ -1,4 +1,4 @@
-// Pitchside on Azure Container Apps: the API + UI container, its registry, its
+// Chalkline on Azure Container Apps: the API + UI container, its registry, its
 // identity and everything that identity may touch. Keyless end to end: a user-assigned
 // managed identity pulls the image (AcrPull), calls the Foundry models (Foundry User)
 // and reads/writes the insight cache (Storage Blob Data Contributor). No secrets.
@@ -10,6 +10,9 @@ targetScope = 'resourceGroup'
 
 param location string = resourceGroup().location
 param name string = 'pitchside'
+
+@description('The container app, which names its public URL (the product is Chalkline).')
+param appName string = 'ca-chalkline'
 
 @description('Existing Foundry account and project (infra/foundry.bicep).')
 param foundryAccountName string
@@ -92,7 +95,7 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
 }
 
 resource app 'Microsoft.App/containerApps@2025-01-01' = {
-  name: 'ca-${name}'
+  name: appName
   location: location
   identity: {
     type: 'UserAssigned'

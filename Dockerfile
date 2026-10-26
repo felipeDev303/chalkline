@@ -1,4 +1,4 @@
-# Pitchside: API + UI in one image. Keyless at runtime: Azure access comes from the
+# Chalkline: API + UI in one image. Keyless at runtime: Azure access comes from the
 # container app's managed identity (AZURE_CLIENT_ID), never from files or keys.
 FROM python:3.12-slim
 

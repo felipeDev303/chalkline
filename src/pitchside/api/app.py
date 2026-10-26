@@ -142,7 +142,7 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
                 cache.store = await open_store(stack)
             yield
 
-    app = FastAPI(title="Pitchside", version=OVERLAY_VERSION, lifespan=lifespan,
+    app = FastAPI(title="Chalkline", version=OVERLAY_VERSION, lifespan=lifespan,
                   description="Explainable match intelligence from synthetic football events.")
     games: dict[str, Game] = {}
     for seed in seeds:
