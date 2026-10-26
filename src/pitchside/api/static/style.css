@@ -73,11 +73,15 @@ select, .ask input {
 .fine { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
 
 /* --- pitch --------------------------------------------------------------------- */
-.pitch-wrap { position: relative; border: 1px solid var(--line); }
+.pitch-wrap { position: relative; border: 1px solid var(--line); overflow: hidden; }
+.pitch-wrap.cam3d { background: linear-gradient(180deg, #06090c 0%, #121a22 30%, #0b0f13 100%); }
 #pitch {
-  width: 100%; display: block;
+  width: 100%; display: block; transition: transform .5s ease;
   background: repeating-linear-gradient(90deg, var(--grass) 0 9.09%, var(--grass-2) 9.09% 18.18%);
 }
+.figures { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.figures .p { pointer-events: auto; }
+#cam[aria-pressed="true"] { border-color: var(--mint); color: var(--mint); }
 .lines * { fill: none; stroke: rgba(255, 255, 255, .5); stroke-width: .25; }
 .p { transition: transform .35s linear; cursor: pointer; }
 .scene .p { transition: transform .6s ease-in-out; }

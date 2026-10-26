@@ -54,9 +54,10 @@
           <g id="trail"></g>
           <line id="pass-line" class="pass"/>
           <g id="scene"></g>
-          <g id="players"></g>
           <circle id="ball" r="0.9"/>
         </svg>
+        <!-- Players stand upright above the (tilted) pitch: projected in app.js -->
+        <svg id="figures" class="figures"><g id="players"></g></svg>
 
         <div class="bug" aria-live="polite">
           <span class="code home" id="home-code">HOM</span>
@@ -109,6 +110,7 @@
           </select></label>
         <button id="next" class="ghost-btn" data-i18n="next_story">Next story</button>
         <button id="next-goal" class="ghost-btn" data-i18n="next_goal">Next goal</button>
+        <button id="cam" class="ghost-btn" aria-pressed="true" data-i18n="cam_3d">Broadcast camera</button>
         <button id="full" class="ghost-btn" data-i18n="full_screen">Full screen</button>
       </div>
       <div class="legend">

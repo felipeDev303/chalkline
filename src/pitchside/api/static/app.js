@@ -11,7 +11,7 @@ const T = {
     scene_note: "Counterfactual: the runner moves only with their team's block, and any defender who followed them goes back too.",
     back_live: "Back to live", next_story: "Next story", on_air: "On air",
     replay: "Replay", speed: "Speed", final: "FT", draw: "Draw", win_prob: "Win probability",
-    next_goal: "Next goal", full_screen: "Full screen", mode_live: "Foundry live",
+    next_goal: "Next goal", full_screen: "Full screen", mode_live: "Foundry live", cam_3d: "Broadcast camera",
     mode_off: "Evidence only (no model)",
     check_title: "Fact-check a line", check: "Check", check_example: "Try an example",
     check_note: "Type any commentator's line: every number is checked against what is known at this minute, no model involved.",
@@ -53,6 +53,7 @@ const T = {
     replay: "Repetición", speed: "Velocidad", final: "FIN", draw: "Empate",
     win_prob: "Probabilidad de ganar",
     next_goal: "Siguiente gol", full_screen: "Pantalla completa", mode_live: "Foundry en vivo",
+    cam_3d: "Cámara de transmisión",
     mode_off: "Solo evidencia (sin modelo)",
     check_title: "Verifica una frase", check: "Verificar", check_example: "Probar un ejemplo",
     check_note: "Escribe la frase de cualquier comentarista: cada número se contrasta con lo que se sabe a este minuto, sin modelo.",
@@ -182,7 +183,45 @@ function setSeg(id, value) {
 
 function teamOf(pid) { return S.players[pid]?.team === S.meta.home.team_id ? "home" : "away"; }
 
+// Broadcast camera. The pitch SVG is tilted with CSS 3D (`translateZ(-k) rotateX(t)` under
+// a `perspective` of P px on .pitch-wrap); `project` repeats that maths so players, drawn
+// upright in the flat #figures layer, land exactly on the tilted grass and shrink with
+// distance. k pushes the pitch back so its near edge keeps its width. Off = t = 0.
+const CAM = { on: true, tilt: (24 * Math.PI) / 180, W: 0, H: 0, P: 1, k: 0 };
+const VIEW = { x0: -3, y0: -3, w: 111, h: 74 };  // #pitch viewBox, metres
+
+function setupCamera() {
+  const svg = $("#pitch");
+  CAM.W = svg.clientWidth;  // layout size: CSS transforms do not change it
+  CAM.H = svg.clientHeight;
+  CAM.P = 1.6 * CAM.W;
+  const t = CAM.on ? CAM.tilt : 0;
+  CAM.k = (CAM.H / 2) * Math.sin(t);
+  $(".pitch-wrap").style.perspective = `${CAM.P}px`;
+  $(".pitch-wrap").classList.toggle("cam3d", CAM.on);
+  svg.style.transform = CAM.on ? `translateZ(${-CAM.k}px) rotateX(${t}rad)` : "none";
+  $("#figures").setAttribute("viewBox", `0 0 ${CAM.W} ${CAM.H}`);
+  $("#cam").setAttribute("aria-pressed", String(CAM.on));
+}
+
+/** Pitch metres -> screen px in #figures, and the scale of one metre there. */
+function project(mx, my) {
+  const { W, H, P, k } = CAM;
+  const t = CAM.on ? CAM.tilt : 0;
+  const X = ((mx - VIEW.x0) * W) / VIEW.w - W / 2;
+  const Y = ((svgY(my) - VIEW.y0) * H) / VIEW.h - H / 2;
+  const z = Y * Math.sin(t) - k;
+  const f = P / (P - z);
+  return { x: W / 2 + X * f, y: H / 2 + Y * Math.cos(t) * f, s: (f * W) / VIEW.w };
+}
+
+function rerenderPitch() {
+  if (!S.overlay) return;
+  if (S.scene) renderScene(); else renderLive();
+}
+
 function renderPlayers(dots, opts = {}) {
+  if (!CAM.W) setupCamera();
   const layer = $("#players");
   const keep = new Set();
   for (const d of dots) {
@@ -197,7 +236,8 @@ function renderPlayers(dots, opts = {}) {
     }
     let { x, y } = d;
     if (opts.runner === d.player_id && opts.at) ({ x, y } = opts.at);
-    g.style.transform = `translate(${x}px, ${svgY(y)}px)`;
+    const q = project(x, y);
+    g.style.transform = `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px) scale(${q.s.toFixed(3)})`;
     g.setAttribute("class", [
       "p", teamOf(d.player_id),
       S.focus === d.player_id ? "focus" : "",
@@ -206,7 +246,7 @@ function renderPlayers(dots, opts = {}) {
     ].join(" "));
   }
   layer.querySelectorAll("g").forEach((g) => { if (!keep.has(g.dataset.id)) g.remove(); });
-  $("#pitch").classList.toggle("scene", !!opts.scene);
+  $("#figures").classList.toggle("scene", !!opts.scene);
 }
 
 // Telestrator: the last seconds of play behind the ball, fading with age.
@@ -716,6 +756,12 @@ function wire() {
   $("#seq").addEventListener("input", (e) => { pause(); if (S.scene) closeScene(); goto(Number(e.target.value)); });
   $("#next").addEventListener("click", () => nextStory());
   $("#next-goal").addEventListener("click", () => nextStory("goal"));
+  $("#cam").addEventListener("click", () => {
+    CAM.on = !CAM.on;
+    setupCamera();
+    rerenderPitch();
+  });
+  new ResizeObserver(() => { setupCamera(); rerenderPitch(); }).observe($(".pitch-wrap"));
   $("#full").addEventListener("click", () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else $(".stage").requestFullscreen?.();
