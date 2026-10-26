@@ -105,6 +105,7 @@ select, .ask input {
 .tr.shot { stroke: var(--mint); stroke-width: .45; }
 .tr-x { stroke-width: .35; }
 .tr-won { fill: none; stroke-width: .35; }
+.tr-from { stroke-width: .25; stroke-dasharray: .5 .4; }
 .tr-label { font: 700 1.5px var(--display); fill: var(--mint); }
 .ghost-dot { fill: none; stroke: var(--mint); stroke-width: .35; stroke-dasharray: .8 .6; }
 .run-arrow { stroke: var(--mint); stroke-width: .5; fill: none; marker-end: url(#arrow); }

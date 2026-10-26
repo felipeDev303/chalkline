@@ -89,8 +89,12 @@ class WinProbability(_Strict):
 
 
 TrailKind = Literal["pass", "shot", "ball_won"]
-TRAIL_S = 24.0  # match seconds of play drawn behind the ball
-TRAIL_MAX = 14
+# The trail is the current move only: players move ~14 m in 12 s, so older arrows
+# point at where players were, not where they are drawn now. With 6 s / 4 actions
+# the newest arrow starts on its passer (median offset 0 m over match 7; 10 s gave
+# 5.3 m, the first 24 s version 12 m); the UI rings where older passers stood.
+TRAIL_S = 6.0  # match seconds of play drawn behind the ball, at most
+TRAIL_MAX = 4
 
 
 class TrailItem(_Strict):
@@ -127,17 +131,27 @@ def _xy(x: float, y: float) -> XYOut:
     return XYOut(x=round(x, 2), y=round(y, 2))
 
 
+def _ball_won(e: MatchEvent) -> bool:
+    return (e.type == "possession_change" and e.cause in ("tackle", "interception")) or (
+        e.type == "tackle" and e.won)
+
+
 def trail(match: Match, events: Sequence[MatchEvent]) -> tuple[TrailItem, ...]:
-    """Passes, shots and balls won in the last TRAIL_S seconds of the current period."""
+    """The current move: the latest acting team's passes and shot, back to where it won
+    the ball, within TRAIL_S seconds of the current period (a telestrator, not a log)."""
     if not events:
         return ()
     last = events[-1]
     meta = match.metadata
     numbers = shirts(match)
+    acting = next((e.team_id for e in reversed(events)
+                   if e.type in ("pass", "shot") or _ball_won(e)), None)
     out: list[TrailItem] = []
     for e in reversed(events):
         if e.period != last.period or last.clock_s - e.clock_s > TRAIL_S:
             break
+        if e.type in ("pass", "shot") and e.team_id != acting:
+            break  # the other team's move: not this one
         shirt = numbers[e.player_id][1] if e.player_id in numbers else None
         common = {"seq": e.seq, "team_id": e.team_id, "shirt_number": shirt,
                   "start": _xy(e.location.x, e.location.y),
@@ -149,9 +163,9 @@ def trail(match: Match, events: Sequence[MatchEvent]) -> tuple[TrailItem, ...]:
             goal_x = PITCH_LENGTH_M if attacks_high_x(meta, e.team_id, e.period) else 0.0
             out.append(TrailItem(kind="shot", end=_xy(goal_x, PITCH_WIDTH_M / 2),
                                  outcome=e.outcome, xg=round(xg(meta, e), 2), **common))
-        elif (e.type == "possession_change" and e.cause in ("tackle", "interception")) or (
-                e.type == "tackle" and e.won):
+        elif _ball_won(e) and e.team_id == acting:
             out.append(TrailItem(kind="ball_won", end=None, outcome=None, **common))
+            break  # where this move started
         if len(out) >= TRAIL_MAX:
             break
     return tuple(reversed(out))

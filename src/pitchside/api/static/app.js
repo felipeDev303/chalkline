@@ -254,7 +254,10 @@ function renderTrail(items) {
   const parts = [];
   for (const it of items) {
     const side = sideOf(it.team_id) || "home";
-    const fade = Math.max(0.25, 1 - it.age_s / 24 * 0.75).toFixed(2);
+    const fade = Math.max(0.4, 1 - (it.age_s / 6) * 0.6).toFixed(2);
+    if (it.age_s > 0 && it.kind !== "ball_won") {  // where the passer or shooter stood then
+      parts.push(`<circle class="tr-from tr ${side}" cx="${it.start.x}" cy="${svgY(it.start.y)}" r="1.4" opacity="${fade}"/>`);
+    }
     const sx = it.start.x, sy = svgY(it.start.y);
     if (it.kind === "ball_won") {
       parts.push(`<circle class="tr-won tr ${side}" cx="${sx}" cy="${sy}" r="1.9" opacity="${fade}"/>`);

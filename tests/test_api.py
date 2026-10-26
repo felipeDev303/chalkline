@@ -13,7 +13,7 @@ from pitchside.agents.contracts import Insight, Narrative, Sentence
 from pitchside.agents.desk import cut
 from pitchside.api.app import create_app
 from pitchside.api.cache import BlobStore, DirStore, InsightCache
-from pitchside.api.overlay import overlay, story_out, story_turn
+from pitchside.api.overlay import TRAIL_MAX, TRAIL_S, overlay, story_out, story_turn
 from pitchside.api.producer import AIRABLE, PRODUCER, air_schedule
 from pitchside.api.templates import headline
 from pitchside.metrics._timeline import view
@@ -109,11 +109,17 @@ def test_decisive_run_story_carries_the_ghost_runner(match, schedule):
     assert set(out.headline) == {"en", "es"}
 
 
-def test_overlay_trail_is_the_last_seconds_of_play(match, schedule):
+def test_overlay_trail_is_the_current_move(match, schedule):
+    lengths = []
+    for seq in range(300, 700, 7):
+        o = overlay(match, schedule, seq)
+        assert len(o.trail) <= TRAIL_MAX and len({t.team_id for t in o.trail}) <= 1
+        assert [t.seq for t in o.trail] == sorted(t.seq for t in o.trail)
+        assert all(0 <= t.age_s <= TRAIL_S for t in o.trail)
+        assert all(t.kind != "ball_won" for t in o.trail[1:])  # a move starts there
+        lengths.append(len(o.trail))
+    assert max(lengths) >= 3  # moves of several actions do get drawn
     o = overlay(match, schedule, 480)
-    assert 0 < len(o.trail) <= 14
-    assert [t.seq for t in o.trail] == sorted(t.seq for t in o.trail) and o.trail[-1].seq <= 480
-    assert all(0 <= t.age_s <= 24 for t in o.trail)
     for t in o.trail:
         if t.kind == "pass":
             assert t.end is not None and t.outcome
