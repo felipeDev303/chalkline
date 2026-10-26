@@ -95,7 +95,10 @@ select, .ask input {
 .p.focus circle { stroke: var(--chalk); stroke-width: .6; }
 .p.runner circle { stroke: var(--mint); stroke-width: .6; }
 .p.dim { opacity: .45; }
-#ball { fill: #fff; stroke: var(--night); stroke-width: .2; }
+#ball { fill: #fff; stroke: var(--night); stroke-width: .2; transition: transform .35s linear; }
+/* A new arrow fades in while the players glide (0.35 s), so it never arrives first. */
+.tr-new { animation: tr-in .35s linear; }
+@keyframes tr-in { from { opacity: 0; } }
 .pass { stroke: rgba(255, 255, 255, .7); stroke-width: .35; stroke-dasharray: 1 .8; }
 .pass.complete { stroke: var(--mint); stroke-width: .4; }
 .tr { fill: none; stroke-width: .35; stroke-linecap: round; }

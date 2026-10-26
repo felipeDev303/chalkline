@@ -249,34 +249,37 @@ function renderPlayers(dots, opts = {}) {
   $("#figures").classList.toggle("scene", !!opts.scene);
 }
 
-// Telestrator: the last seconds of play behind the ball, fading with age.
-function renderTrail(items) {
-  const parts = [];
-  for (const it of items) {
-    const side = sideOf(it.team_id) || "home";
-    const fade = Math.max(0.4, 1 - (it.age_s / 6) * 0.6).toFixed(2);
-    if (it.age_s > 0 && it.kind !== "ball_won") {  // where the passer or shooter stood then
-      parts.push(`<circle class="tr-from tr ${side}" cx="${it.start.x}" cy="${svgY(it.start.y)}" r="1.4" opacity="${fade}"/>`);
-    }
-    const sx = it.start.x, sy = svgY(it.start.y);
-    if (it.kind === "ball_won") {
-      parts.push(`<circle class="tr-won tr ${side}" cx="${sx}" cy="${sy}" r="1.9" opacity="${fade}"/>`);
-      continue;
-    }
-    const ex = it.end.x, ey = svgY(it.end.y);
-    if (it.kind === "shot") {
-      parts.push(`<g opacity="${fade}"><line class="tr shot" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" marker-end="url(#arrow)"/>`
-        + `<text class="tr-label" x="${sx + 1.2}" y="${sy - 1.4}">xG ${num(it.xg.toFixed(2))}</text></g>`);
-      continue;
-    }
-    const failed = it.outcome !== "complete";
-    parts.push(`<line class="tr ${side} ${failed ? "failed" : ""}" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}"`
-      + ` opacity="${fade}" ${failed ? "" : `marker-end="url(#arrow-${side})"`}/>`);
-    if (failed) {
-      parts.push(`<path class="tr tr-x ${side}" d="M${ex - 0.8},${ey - 0.8} L${ex + 0.8},${ey + 0.8} M${ex - 0.8},${ey + 0.8} L${ex + 0.8},${ey - 0.8}" opacity="${fade}"/>`);
-    }
+// The ball glides like the players (same CSS transition), so neither lags the other.
+function setBall(x, y) {
+  $("#ball").style.transform = `translate(${x}px, ${y}px)`;
+}
+
+// Telestrator: the current move behind the ball. A new arrow fades in over the same
+// time the players take to glide to their new spots, so it never arrives first.
+function trailItem(it) {
+  const side = sideOf(it.team_id) || "home";
+  const sx = it.start.x, sy = svgY(it.start.y);
+  if (it.kind === "ball_won") return `<circle class="tr-won tr ${side}" cx="${sx}" cy="${sy}" r="1.9"/>`;
+  const from = it.age_s > 0  // where the passer or shooter stood then
+    ? `<circle class="tr-from tr ${side}" cx="${sx}" cy="${sy}" r="1.4"/>` : "";
+  const ex = it.end.x, ey = svgY(it.end.y);
+  if (it.kind === "shot") {
+    return `${from}<line class="tr shot" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" marker-end="url(#arrow)"/>`
+      + `<text class="tr-label" x="${sx + 1.2}" y="${sy - 1.4}">xG ${num(it.xg.toFixed(2))}</text>`;
   }
-  $("#trail").innerHTML = parts.join("");
+  const failed = it.outcome !== "complete";
+  const cross = failed ? `<path class="tr tr-x ${side}" d="M${ex - 0.8},${ey - 0.8} L${ex + 0.8},${ey + 0.8} M${ex - 0.8},${ey + 0.8} L${ex + 0.8},${ey - 0.8}"/>` : "";
+  return `${from}<line class="tr ${side} ${failed ? "failed" : ""}" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}"`
+    + ` ${failed ? "" : `marker-end="url(#arrow-${side})"`}/>${cross}`;
+}
+
+function renderTrail(items) {
+  const seen = S.trailSeen ?? new Set();
+  $("#trail").innerHTML = items.map((it) => {
+    const fade = Math.max(0.4, 1 - (it.age_s / 6) * 0.6).toFixed(2);
+    return `<g class="${seen.has(it.seq) ? "" : "tr-new"}" opacity="${fade}">${trailItem(it)}</g>`;
+  }).join("");
+  S.trailSeen = new Set(items.map((it) => it.seq));
 }
 
 function renderLive() {
@@ -287,9 +290,10 @@ function renderLive() {
   renderPlayers(o.players);
   renderLower();
   const e = o.last_event;
-  const ball = e.type === "pass" && e.outcome === "complete" ? e.end_location : e.location;
-  $("#ball").setAttribute("cx", ball.x);
-  $("#ball").setAttribute("cy", svgY(ball.y));
+  // Players are drawn as they stood at this event, so the ball is at its location: the
+  // passer's feet for a pass (the arrow shows where it goes), not where it will land.
+  const ball = e.location;
+  setBall(ball.x, svgY(ball.y));
   $("#pass-line").style.display = "none";  // the trail draws the latest pass
 }
 
@@ -361,8 +365,7 @@ function renderScene() {
   line.setAttribute("x2", target.x); line.setAttribute("y2", svgY(target.y));
   line.setAttribute("class", "pass complete");
   line.style.display = "";
-  $("#ball").setAttribute("cx", g.pass_from.x + 1.2);  // at the passer's feet, not on top
-  $("#ball").setAttribute("cy", svgY(g.pass_from.y) - 1.2);
+  setBall(g.pass_from.x + 1.2, svgY(g.pass_from.y) - 1.2);  // at the passer's feet
   const cw = factValue(story, "control_with");
   const co = factValue(story, "control_without");
   $("#m-with").style.width = `${cw.value}%`;
@@ -721,6 +724,7 @@ async function loadMatch(matchId) {
     }
   }
   S.selected = null; S.scene = null; S.focus = ""; S.seen = new Set(); S.airing = null;
+  S.trailSeen = null;
   $("#scene-ctl").hidden = true;
   $("#evidence").hidden = true;
   $("#check-body").innerHTML = "";
