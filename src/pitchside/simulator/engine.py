@@ -42,7 +42,13 @@ from pitchside.simulator.pitch import (
     to_point,
     zone,
 )
-from pitchside.simulator.regimes import MatchTruth, RegimeTracker, is_control, plan_spells
+from pitchside.simulator.regimes import (
+    Latent,
+    MatchTruth,
+    RegimeTracker,
+    is_control,
+    plan_spells,
+)
 from pitchside.simulator.rng import Rng
 from pitchside.simulator.runs import ActiveRun, RunLabel
 
@@ -82,7 +88,8 @@ def simulate_match_with_truth(
     engine = _Engine(metadata, rng, params, tracker)
     events = engine.run()
     truth = tracker.truth(metadata.match_id).model_copy(
-        update={"runs": tuple(engine.run_labels)})
+        update={"runs": tuple(engine.run_labels), "shots": tuple(engine.shot_truth),
+                "passes": tuple(engine.pass_truth)})
     return Match(metadata=metadata, events=events), truth
 
 
@@ -134,6 +141,10 @@ class _Engine:
         self.plant_runs = not is_control(meta.seed, params)
         self.active_run: ActiveRun | None = None
         self.run_labels: list[RunLabel] = []
+        # Latent outcome probabilities, recorded for evaluation only (never emitted).
+        self.shot_truth: list[Latent] = []
+        self.pass_truth: list[Latent] = []
+        self._pass_p = 1.0
 
     @property
     def dfn(self) -> int:
@@ -407,6 +418,8 @@ class _Engine:
             height=height,
             under_pressure=self.pressured,
         )
+        if restart != KICKOFF:
+            self.pass_truth.append(Latent(seq=self.events[-1].seq, p=round(self._pass_p, 6)))
         self._close_run(len(self.events) - 1, receiver, outcome)
         self.clock += duration
 
@@ -484,7 +497,8 @@ class _Engine:
         space = min(self._space(end), p.space_ref_m) / p.space_ref_m
         prob += p.pass_space_bonus * (space - 0.5)
         lo, hi = p.pass_prob_bounds
-        if rng.chance(min(max(prob, lo), hi)):
+        self._pass_p = min(max(prob, lo), hi)
+        if rng.chance(self._pass_p):
             return "complete"
         forward = end[0] > self.ball[0]
         if forward and end[0] >= FINAL_THIRD_X and rng.chance(p.fail_offside_prob):
@@ -543,6 +557,7 @@ class _Engine:
             outcome=outcome, body_part=body, speed_kmh=round(speed, 1),
             under_pressure=self.pressured,
         )
+        self.shot_truth.append(Latent(seq=self.events[-1].seq, p=round(min(xg, 1.0), 6)))
         self.clock += rng.uniform(0.5, 1.5)
         self.from_cross = False
 

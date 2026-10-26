@@ -59,6 +59,13 @@ class PressureSpan(_Strict):
     factor: float
 
 
+class Latent(_Strict):
+    """The probability the simulator drew an event's outcome from."""
+
+    seq: int
+    p: float
+
+
 class MatchTruth(_Strict):
     match_id: str
     seed: int
@@ -66,6 +73,8 @@ class MatchTruth(_Strict):
     changes: tuple[RegimeChange, ...]
     high_pressure_spans: tuple[PressureSpan, ...]
     runs: tuple[RunLabel, ...] = ()  # planted off-ball runs (simulator/runs.py)
+    shots: tuple[Latent, ...] = ()  # true goal probability of each shot (latent xG)
+    passes: tuple[Latent, ...] = ()  # true completion probability of each open-play pass
 
 
 def truth_path(jsonl_path: Path) -> Path:

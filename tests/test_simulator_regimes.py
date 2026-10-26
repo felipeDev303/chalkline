@@ -68,6 +68,20 @@ def test_truth_records_spells_and_trailing():
     assert causes == {"planned_press", "planned_drop", "spell_end", "trailing", "trailing_end"}
 
 
+def test_truth_records_the_latent_probability_of_every_shot_and_pass():
+    """True xG and pass completion probability: for evaluation, never in the events."""
+    match, truth = simulate_match_with_truth(42)
+    shots = [e.seq for e in match.events if e.type == "shot"]
+    assert [s.seq for s in truth.shots] == shots
+    assert all(0.0 < s.p < 1.0 for s in truth.shots)
+    by_seq = {e.seq: e for e in match.events}
+    assert all(by_seq[x.seq].type == "pass" and 0.0 < x.p <= 1.0 for x in truth.passes)
+    passes = [e for e in match.events if e.type == "pass"]
+    goals = sum(by_seq[s.seq].outcome == "goal" for s in truth.shots)
+    assert len(passes) - len(truth.passes) == 2 + goals  # kickoff passes are certain
+    assert abs(sum(s.p for s in truth.shots) - goals) < 4  # roughly calibrated
+
+
 def test_truth_is_deterministic():
     assert simulate_match_with_truth(7)[1] == simulate_match_with_truth(7)[1]
 
