@@ -109,6 +109,20 @@ def test_decisive_run_story_carries_the_ghost_runner(match, schedule):
     assert set(out.headline) == {"en", "es"}
 
 
+def test_overlay_trail_is_the_last_seconds_of_play(match, schedule):
+    o = overlay(match, schedule, 480)
+    assert 0 < len(o.trail) <= 14
+    assert [t.seq for t in o.trail] == sorted(t.seq for t in o.trail) and o.trail[-1].seq <= 480
+    assert all(0 <= t.age_s <= 24 for t in o.trail)
+    for t in o.trail:
+        if t.kind == "pass":
+            assert t.end is not None and t.outcome
+        if t.kind == "shot":
+            assert t.end.x in (0.0, 105.0) and t.end.y == 34.0 and t.xg is not None
+    shot_seq = next(e.seq for e in match.events if e.type == "shot")
+    assert any(t.kind == "shot" for t in overlay(match, schedule, shot_seq).trail)
+
+
 def test_overlay_is_deterministic(match, schedule):
     seq = match.events[300].seq
     a = overlay(match, schedule, seq).model_dump_json()

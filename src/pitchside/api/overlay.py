@@ -9,6 +9,7 @@ asynchronous call (`POST /api/matches/{id}/insights`). The JSON Schema is served
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -16,14 +17,15 @@ from pydantic import BaseModel, ConfigDict
 from pitchside.agents.contracts import Language, Persona, TurnRequest
 from pitchside.api.producer import Story, on_air
 from pitchside.api.templates import headline
-from pitchside.events.match import Match
-from pitchside.events.schema import MatchEvent
+from pitchside.events.match import Match, attacks_high_x
+from pitchside.events.schema import PITCH_LENGTH_M, PITCH_WIDTH_M, MatchEvent
 from pitchside.metrics._timeline import match_minute, possessor_after, view
 from pitchside.metrics.contract import Fact, minute_display
+from pitchside.metrics.models import xg
 from pitchside.metrics.off_ball import pass_credits
 from pitchside.metrics.win_probability import timeline
 
-OVERLAY_VERSION = "1.1.0"  # 1.1.0: win_probability
+OVERLAY_VERSION = "1.2.0"  # 1.1.0: win_probability; 1.2.0: trail
 
 
 class _Strict(BaseModel):
@@ -86,8 +88,27 @@ class WinProbability(_Strict):
     away: float
 
 
+TrailKind = Literal["pass", "shot", "ball_won"]
+TRAIL_S = 24.0  # match seconds of play drawn behind the ball
+TRAIL_MAX = 14
+
+
+class TrailItem(_Strict):
+    """One recent action, for the telestrator: where it went and how it ended."""
+
+    seq: int
+    kind: TrailKind
+    team_id: str
+    shirt_number: int | None
+    start: XYOut
+    end: XYOut | None  # pass destination, or the centre of the goal for a shot
+    outcome: str | None  # pass: complete/incomplete/out/offside; shot: goal/saved/...
+    xg: float | None = None  # shots
+    age_s: float  # match seconds before the overlay's moment
+
+
 class Overlay(_Strict):
-    overlay_version: Literal["1.1.0"] = OVERLAY_VERSION
+    overlay_version: Literal["1.2.0"] = OVERLAY_VERSION
     match_id: str
     as_of_seq: int
     period: int
@@ -98,11 +119,42 @@ class Overlay(_Strict):
     possession_team_id: str | None
     last_event: LastEvent
     players: tuple[PlayerDot, ...]  # latest known positions; empty without tracking
+    trail: tuple[TrailItem, ...]  # the last TRAIL_S seconds of play, oldest first
     stories: tuple[StoryOut, ...]  # on air by as_of_seq, newest first
 
 
 def _xy(x: float, y: float) -> XYOut:
     return XYOut(x=round(x, 2), y=round(y, 2))
+
+
+def trail(match: Match, events: Sequence[MatchEvent]) -> tuple[TrailItem, ...]:
+    """Passes, shots and balls won in the last TRAIL_S seconds of the current period."""
+    if not events:
+        return ()
+    last = events[-1]
+    meta = match.metadata
+    numbers = shirts(match)
+    out: list[TrailItem] = []
+    for e in reversed(events):
+        if e.period != last.period or last.clock_s - e.clock_s > TRAIL_S:
+            break
+        shirt = numbers[e.player_id][1] if e.player_id in numbers else None
+        common = {"seq": e.seq, "team_id": e.team_id, "shirt_number": shirt,
+                  "start": _xy(e.location.x, e.location.y),
+                  "age_s": round(last.clock_s - e.clock_s, 1)}
+        if e.type == "pass":
+            out.append(TrailItem(kind="pass", end=_xy(e.end_location.x, e.end_location.y),
+                                 outcome=e.outcome, **common))
+        elif e.type == "shot":
+            goal_x = PITCH_LENGTH_M if attacks_high_x(meta, e.team_id, e.period) else 0.0
+            out.append(TrailItem(kind="shot", end=_xy(goal_x, PITCH_WIDTH_M / 2),
+                                 outcome=e.outcome, xg=round(xg(meta, e), 2), **common))
+        elif (e.type == "possession_change" and e.cause in ("tackle", "interception")) or (
+                e.type == "tackle" and e.won):
+            out.append(TrailItem(kind="ball_won", end=None, outcome=None, **common))
+        if len(out) >= TRAIL_MAX:
+            break
+    return tuple(reversed(out))
 
 
 def _dots(e: MatchEvent, shirts: dict[str, tuple[str, int]]) -> tuple[PlayerDot, ...]:
@@ -182,5 +234,6 @@ def overlay(match: Match, schedule: list[Story], as_of_seq: int,
                           if last.type == "pass" else None),
             outcome=getattr(last, "outcome", None)),
         players=_dots(framed, shirts(match)) if framed is not None else (),
+        trail=trail(match, events),
         stories=aired,
     )

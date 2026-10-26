@@ -209,25 +209,45 @@ function renderPlayers(dots, opts = {}) {
   $("#pitch").classList.toggle("scene", !!opts.scene);
 }
 
+// Telestrator: the last seconds of play behind the ball, fading with age.
+function renderTrail(items) {
+  const parts = [];
+  for (const it of items) {
+    const side = sideOf(it.team_id) || "home";
+    const fade = Math.max(0.25, 1 - it.age_s / 24 * 0.75).toFixed(2);
+    const sx = it.start.x, sy = svgY(it.start.y);
+    if (it.kind === "ball_won") {
+      parts.push(`<circle class="tr-won tr ${side}" cx="${sx}" cy="${sy}" r="1.9" opacity="${fade}"/>`);
+      continue;
+    }
+    const ex = it.end.x, ey = svgY(it.end.y);
+    if (it.kind === "shot") {
+      parts.push(`<g opacity="${fade}"><line class="tr shot" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" marker-end="url(#arrow)"/>`
+        + `<text class="tr-label" x="${sx + 1.2}" y="${sy - 1.4}">xG ${num(it.xg.toFixed(2))}</text></g>`);
+      continue;
+    }
+    const failed = it.outcome !== "complete";
+    parts.push(`<line class="tr ${side} ${failed ? "failed" : ""}" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}"`
+      + ` opacity="${fade}" ${failed ? "" : `marker-end="url(#arrow-${side})"`}/>`);
+    if (failed) {
+      parts.push(`<path class="tr tr-x ${side}" d="M${ex - 0.8},${ey - 0.8} L${ex + 0.8},${ey + 0.8} M${ex - 0.8},${ey + 0.8} L${ex + 0.8},${ey - 0.8}" opacity="${fade}"/>`);
+    }
+  }
+  $("#trail").innerHTML = parts.join("");
+}
+
 function renderLive() {
   const o = S.overlay;
   if (!o) return;
   $("#scene").innerHTML = "";
+  renderTrail(o.trail);
   renderPlayers(o.players);
   renderLower();
   const e = o.last_event;
   const ball = e.type === "pass" && e.outcome === "complete" ? e.end_location : e.location;
   $("#ball").setAttribute("cx", ball.x);
   $("#ball").setAttribute("cy", svgY(ball.y));
-  const line = $("#pass-line");
-  if (e.type === "pass") {
-    line.setAttribute("x1", e.location.x); line.setAttribute("y1", svgY(e.location.y));
-    line.setAttribute("x2", e.end_location.x); line.setAttribute("y2", svgY(e.end_location.y));
-    line.setAttribute("class", `pass ${e.outcome === "complete" ? "complete" : ""}`);
-    line.style.display = "";
-  } else {
-    line.style.display = "none";
-  }
+  $("#pass-line").style.display = "none";  // the trail draws the latest pass
 }
 
 function factValue(story, name) { return story.facts.find((f) => suffix(f) === name); }
@@ -237,9 +257,20 @@ function sideOf(teamId) {
   return teamId === S.meta.home.team_id ? "home" : "away";
 }
 
-// The lower third: the story being replayed, else the one picked, else the latest on air.
+const ON_AIR_MS = 8000;  // a newly aired story's lower third, like a broadcast graphic
+
+// A story that has just aired takes the lower third for ON_AIR_MS, then clears.
+function airStory(story) {
+  S.airing = { story, until: performance.now() + ON_AIR_MS };
+  clearTimeout(S.airTimer);
+  S.airTimer = setTimeout(renderLower, ON_AIR_MS + 50);
+  renderLower();
+}
+
+// The lower third: the story being replayed, else the one picked, else one on air now.
 function renderLower() {
-  const story = S.scene ?? S.selected?.story ?? S.overlay?.stories[0] ?? null;
+  const airing = S.airing && performance.now() < S.airing.until ? S.airing.story : null;
+  const story = S.scene ?? S.selected?.story ?? airing;
   const lower = $("#lower");
   if (!story) { lower.hidden = true; return; }
   lower.hidden = false;
@@ -275,6 +306,7 @@ function renderScene() {
   const near = (d) => Math.hypot(d.x - g.pass_from.x, d.y - g.pass_from.y);
   const passer = g.frame.filter((d) => d.team_id === story.team_id)
     .reduce((a, b) => (near(b) < near(a) ? b : a)).player_id;
+  $("#trail").innerHTML = "";
   renderPlayers(g.frame, { scene: true, runner: g.player_id, recipient: g.recipient_id, passer, at });
   $("#scene").innerHTML = `
     <circle class="target" cx="${target.x}" cy="${svgY(target.y)}" r="2.6"/>
@@ -408,6 +440,9 @@ function renderFeed() {
     return;
   }
   feed.innerHTML = "";
+  // Air the newest story when it has just gone out (not after a long jump).
+  const newest = stories[0];
+  if (!S.seen.has(newest.story_id) && S.seq - newest.aired_at_seq <= 30) airStory(newest);
   for (const s of stories) {
     const li = document.createElement("li");
     const fresh = !S.seen.has(s.story_id);
@@ -642,7 +677,7 @@ async function loadMatch(matchId) {
       S.players[p.player_id] = { name: p.name, shirt: p.shirt_number, team: team.team_id, teamName: team.name };
     }
   }
-  S.selected = null; S.scene = null; S.focus = ""; S.seen = new Set();
+  S.selected = null; S.scene = null; S.focus = ""; S.seen = new Set(); S.airing = null;
   $("#scene-ctl").hidden = true;
   $("#evidence").hidden = true;
   $("#check-body").innerHTML = "";
@@ -712,8 +747,9 @@ function wire() {
     if (e.key === "g") nextStory("goal");
   });
   const defs = document.createElementNS(SVGNS, "defs");
-  defs.innerHTML = `<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4"
-    markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6fdca0"/></marker>`;
+  const marker = (id, color) => `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4"
+    markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${color}"/></marker>`;
+  defs.innerHTML = marker("arrow", "#6fdca0") + marker("arrow-home", "#5ab4ff") + marker("arrow-away", "#ff8a3d");
   $("#pitch").prepend(defs);
 }
 
