@@ -15,8 +15,8 @@ claim about the game measured against ground truth.
 
 ## Links
 
-- Live demo (no login): https://ca-pitchside.greenforest-cf5df294.northcentralus.azurecontainerapps.io
-- Source code: https://github.com/felipeDev303/pitchside
+- Live demo (no login): https://ca-chalkline.greenforest-cf5df294.northcentralus.azurecontainerapps.io
+- Source code: https://github.com/felipeDev303/chalkline
 - Demo video: <YouTube or Vimeo link>
 
 ## The problem

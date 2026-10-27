@@ -3,7 +3,7 @@
 **Explainable, verified match intelligence from synthetic football events.**
 Built for the Microsoft × Premier League *Inside the Game* hackathon.
 
-- **Live demo:** https://ca-pitchside.greenforest-cf5df294.northcentralus.azurecontainerapps.io
+- **Live demo:** https://ca-chalkline.greenforest-cf5df294.northcentralus.azurecontainerapps.io
   (no login; Azure Container Apps, Microsoft Foundry, keyless)
 - **Every number on screen comes from a deterministic, tested tool, and every claim
   Chalkline makes about the game is measured** against ground truth the simulator plants

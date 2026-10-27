@@ -87,7 +87,7 @@ module storage 'storage.bicep' = {
 
 // This subscription gets Container Apps express environments (Sandboxes-based):
 // consumption only, no workload profiles, no Azure Monitor log routing. Logs are
-// read by streaming: az containerapp logs show -g rg-pitchside -n ca-pitchside --follow
+// read by streaming: az containerapp logs show -g rg-pitchside -n ca-chalkline --follow
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: 'cae-${name}'
   location: location

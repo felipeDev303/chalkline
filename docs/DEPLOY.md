@@ -11,7 +11,7 @@ passwords exist anywhere.
 | User-assigned managed identity `id-pitchside` | `infra/app.bicep` | AcrPull, Foundry User, Storage Blob Data Contributor |
 | Container registry (Basic) | `infra/app.bicep` | admin user disabled; push with Entra ID |
 | Storage account + private `insights` container | `infra/storage.bicep` (module) | shared keys and public access disabled |
-| Container Apps environment + app `ca-pitchside` | `infra/app.bicep` | express environment, one always-on replica |
+| Container Apps environment + app `ca-chalkline` | `infra/app.bicep` | express environment, one always-on replica |
 
 ## Steps
 
@@ -20,11 +20,11 @@ $me = az ad signed-in-user show --query id -o tsv
 $foundry = "<foundry account name>"   # output of infra/foundry.bicep
 
 # 1. Infra with a public placeholder image (creates the registry).
-az deployment group create -g rg-pitchside -n pitchside-app -f infra/app.bicep `
+az deployment group create -g rg-pitchside -n chalkline-app -f infra/app.bicep `
   -p foundryAccountName=$foundry developerPrincipalId=$me
 
 # 2. Build and push (Entra ID login, no admin user).
-$acr = az deployment group show -g rg-pitchside -n pitchside-app --query properties.outputs.registryName.value -o tsv
+$acr = az deployment group show -g rg-pitchside -n chalkline-app --query properties.outputs.registryName.value -o tsv
 az acr login -n $acr
 $tag = "$acr.azurecr.io/pitchside:$(git rev-parse --short HEAD)"
 docker build -t $tag .
@@ -33,12 +33,12 @@ docker push $tag
 $img = "$acr.azurecr.io/pitchside@" + (az acr repository show -n $acr --image $tag.Split('/')[1] --query digest -o tsv)
 
 # 3. Point the app at the image.
-az deployment group create -g rg-pitchside -n pitchside-app -f infra/app.bicep `
+az deployment group create -g rg-pitchside -n chalkline-app -f infra/app.bicep `
   -p foundryAccountName=$foundry developerPrincipalId=$me image=$img
 ```
 
 The app URL is the `url` output. Logs: `az containerapp logs show -g rg-pitchside -n
-ca-pitchside --follow`.
+ca-chalkline --follow`.
 
 ## Precomputed insights
 
