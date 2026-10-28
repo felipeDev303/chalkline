@@ -110,7 +110,7 @@ Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pytest -q                   # 312 tests, ~1 min
+uv run pytest -q                   # 313 tests, ~1 min
 uv run python -m pitchside.api     # http://127.0.0.1:8000 (evidence-only mode without a model)
 ```
 

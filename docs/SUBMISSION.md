@@ -1,6 +1,6 @@
 # Submission text
 
-Copy-ready text for the *Inside the Game* submission form.
+The text submitted to the *Inside the Game* form (Oct 27, 2026).
 
 ## Project name
 
@@ -8,9 +8,10 @@ Chalkline
 
 ## One-line description
 
-Chalkline replays a football match and tells you what mattered and why, with every
-number computed by tested code, every sentence checked by a verifier agent, and every
-claim about the game measured against ground truth.
+For live broadcast teams, Chalkline is an AI match desk that puts *what mattered and
+why* on air in real time — where every number comes from tested code and is checked by
+a verifier agent before it airs, or it doesn't air at all, and every model behind it is
+measured against ground truth.
 
 ## Links
 
@@ -20,11 +21,21 @@ claim about the game measured against ground truth.
 
 ## The problem
 
-Fans, broadcasters and clubs want to know *why* a moment mattered, not only that it
-happened, and AI can now write that story live. But a confident sentence with a wrong
-number is worse than no sentence, and today nobody can show that their AI insights are
-right: indices have no definition, verifiers check that an event exists rather than
-what was claimed about it, and models are judged by eye.
+Generative AI has moved from "can it write?" to "can it be trusted?". Anyone can now
+generate fluent match commentary live, but on air a confident sentence with a wrong
+number — possession, xG, win probability, who made the run — is worse than no
+sentence: it forces a correction and damages trust, and no graphics desk has time to
+check every figure live. So AI stays off air. Meanwhile live analytics is expected (xG,
+win probability, pressing), yet today's indices have no definition, verifiers check that
+an event exists rather than what was claimed about it, and models are judged by eye.
+
+## Who it's for
+
+Broadcast and live production teams first: put AI explanations and graphics on air
+without airing a number the data doesn't support. The casual fan is who benefits —
+"tell me what mattered and why, without making stuff up", in English or Spanish, at
+their level. Clubs and analysts are a second market: the same measured, reproducible
+tools are what they need to defend an insight internally.
 
 ## What it does
 
@@ -45,7 +56,8 @@ Chalkline is one pipeline in five stages, all on synthetic data:
    narrative is hidden and only its evidence is shown.
 4. **Render.** A broadcast view with a perspective camera, score bug, win-probability
    bar, a telestrator of the current move, and lower thirds aired by a producer agent
-   that only knows what has happened so far. "The run that made it" replays a pass
+   that only knows what has happened so far; the on-air headlines are deterministic
+   templates built from the facts alone. "The run that made it" replays a pass
    with and without the run. The overlay is a documented, versioned JSON contract.
 5. **Personalize.** Casual or analyst, English or Spanish, side by side; follow a
    player; ask a question; and fact-check any commentator's line against what is known
@@ -65,10 +77,20 @@ Chalkline is one pipeline in five stages, all on synthetic data:
 We report what did not help too: splitting analyst and narrator added no measurable
 quality over one agent plus the verifier.
 
+## Impact
+
+Before: one wrong number forces an on-air retraction, so AI stays off air. After: AI
+explanations go on air with one-click evidence, documented methods and a fallback that
+never airs an unsupported number. Cost scales with stories, not viewers: each verified
+narrative is computed once per story, audience and language, and cached. The path to a
+live feed (Event Hubs, Web PubSub, Cosmos DB, Foundry evaluations) starts in shadow mode
+next to a human graphics desk — see `docs/PRODUCTION.md`.
+
 ## Microsoft technology used
 
 - **Microsoft Foundry**: gpt-4.1-mini with a gpt-5-mini fallback for the analyst and
-  narrator, on a keyless account (local auth disabled).
+  narrator, on a keyless account (local auth disabled); Azure AI Speech for the
+  video's voice-over.
 - **Microsoft Agent Framework**: the desk is a workflow of executors (analyst,
   narrator, verifier) with a retry edge; failure recovery moves down a model chain,
   corrects tool errors, falls back to default evidence, and finally to evidence only.
@@ -78,7 +100,7 @@ quality over one agent plus the verifier.
   Contributor; no keys or connection strings anywhere.
 - **Azure Container Registry** and **Azure Blob Storage**: the image and the cache of
   verified narratives, precomputed for every aired story so judges see them instantly.
-- **Bicep and GitHub Actions**: infrastructure as code; 312 tests and a cross-OS
+- **Bicep and GitHub Actions**: infrastructure as code; 313 tests and a cross-OS
   reproducibility check on every push.
 
 ## Category
