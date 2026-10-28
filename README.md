@@ -5,6 +5,7 @@ Built for the Microsoft × Premier League *Inside the Game* hackathon.
 
 - **Live demo:** https://ca-chalkline.greenforest-cf5df294.northcentralus.azurecontainerapps.io
   (no login; Azure Container Apps, Microsoft Foundry, keyless)
+- **Demo video (under 2 minutes):** https://youtu.be/nsK9wkz4UUw
 - **Every number on screen comes from a deterministic, tested tool, and every claim
   Chalkline makes about the game is measured** against ground truth the simulator plants
   and never shows to the metrics or the agents.

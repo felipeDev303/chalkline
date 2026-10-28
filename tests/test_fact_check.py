@@ -84,3 +84,14 @@ def test_check_endpoint(tmp_path):
         assert r.status_code == 200 and r.json()["verdict"] == "verified"
         too_long = {"text": "x" * 301, "as_of_seq": SEQ, "language": "en"}
         assert c.post(url, json=too_long).status_code == 422
+
+
+def test_check_endpoint_is_rate_limited(tmp_path):
+    async def no_models(stack):
+        return []
+
+    app = create_app(seeds=[7], models=no_models, cache_dir=tmp_path, checks_per_minute=2)
+    line = {"text": "Westerlake City lead 0-1.", "as_of_seq": SEQ, "language": "en"}
+    with TestClient(app) as c:
+        codes = [c.post("/api/matches/sim-7/check", json=line).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]

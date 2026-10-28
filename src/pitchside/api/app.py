@@ -121,14 +121,16 @@ class LineRequest(BaseModel):
 def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_models,
                store: StoreFactory | None = None, cache_dir: Path | None = None,
                insights_per_minute: int | None = None, insights_per_day: int | None = None,
-               concurrent_desks: int = 2) -> FastAPI:
+               checks_per_minute: int | None = None, concurrent_desks: int = 2) -> FastAPI:
     """`store` defaults to Blob or a folder from the environment (see api/cache.py);
     `cache_dir` forces a folder (tests). New insights are limited per client per minute
     and, across all clients, per day: the daily cap bounds model spend even if client
-    addresses are spoofed."""
+    addresses are spoofed. Line fact-checks use no model but are limited per client
+    too, so nobody can tie the replica up with them."""
     seeds = seeds if seeds is not None else demo_seeds()
     per_minute = insights_per_minute or int(os.environ.get("PITCHSIDE_INSIGHTS_PER_MIN", "6"))
     per_day = insights_per_day or int(os.environ.get("PITCHSIDE_INSIGHTS_PER_DAY", "300"))
+    checks = checks_per_minute or int(os.environ.get("PITCHSIDE_CHECKS_PER_MIN", "30"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -151,6 +153,7 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
     cache = InsightCache()
     limit = RateLimit(per_minute)
     daily = RateLimit(per_day, window_s=86400.0)
+    check_limit = RateLimit(checks)
     desks = asyncio.Semaphore(concurrent_desks)
     app.state.models = []
 
@@ -238,8 +241,11 @@ def create_app(seeds: list[int] | None = None, models: ModelsFactory = foundry_m
         return await answer(match_id, turn, request)
 
     @app.post("/api/matches/{match_id}/check", response_model=LineCheck)
-    def check(match_id: str, line: LineRequest) -> LineCheck:
+    def check(match_id: str, line: LineRequest, request: Request) -> LineCheck:
         """Fact-check a commentary line against what is known at as_of_seq (no model)."""
+        client = request.client.host if request.client else "unknown"
+        if not check_limit.allow(client, time.monotonic()):
+            raise HTTPException(429, "too many checks; try again in a minute")
         try:
             return check_line(game(match_id).match, line.text, line.as_of_seq, line.language)
         except ToolError as err:

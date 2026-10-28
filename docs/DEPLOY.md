@@ -59,6 +59,8 @@ uv run python scripts/precompute_insights.py
 - New (uncached) insights: 6 per client per minute and 300 per day across all
   clients (`PITCHSIDE_INSIGHTS_PER_MIN`, `PITCHSIDE_INSIGHTS_PER_DAY`); cached answers
   are free and unlimited. About 10k tokens per insight.
+- Line fact-checks use no model; 30 per client per minute (`PITCHSIDE_CHECKS_PER_MIN`)
+  so nobody can tie the replica up with them.
 - Foundry deployments are capped at 50k tokens per minute; a subscription budget alerts.
 - One replica of 0.5 vCPU / 1 GiB; idle time bills at the reduced idle rate.
 

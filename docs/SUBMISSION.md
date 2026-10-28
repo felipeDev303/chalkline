@@ -1,7 +1,6 @@
 # Submission text
 
-Copy-ready text for the *Inside the Game* submission form. Replace the video link once
-the video is uploaded.
+Copy-ready text for the *Inside the Game* submission form.
 
 ## Project name
 
@@ -17,7 +16,7 @@ claim about the game measured against ground truth.
 
 - Live demo (no login): https://ca-chalkline.greenforest-cf5df294.northcentralus.azurecontainerapps.io
 - Source code: https://github.com/felipeDev303/chalkline
-- Demo video: <YouTube or Vimeo link>
+- Demo video: https://youtu.be/nsK9wkz4UUw
 
 ## The problem
 

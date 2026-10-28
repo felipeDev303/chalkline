@@ -582,7 +582,7 @@ function renderTake(persona, entry, idx) {
       `<span class="sentence ${s.kind} ${S.sentence?.take === idx && S.sentence.i === i ? "sel" : ""}"
              data-take="${idx}" data-i="${i}">${esc(s.text)}</span>`).join(" ") + "</p>";
   }
-  const trace = [`${ins.attempts} ${t("attempts")}`, ins.model ? `${t("model")}: ${ins.model}` : "",
+  const trace = [`${ins.attempts} ${t("attempts")}`, ins.model ? `${t("model")}: ${esc(ins.model)}` : "",
     ins.tokens ? `${ins.tokens} ${t("tokens")}` : ""].filter(Boolean).join(" · ");
   const notes = ins.notes.map((n) => `<li>${esc(n)}</li>`).join("");
   return `<div class="take"><h3>${S.compare ? t(persona) : ""} ${statusBadge(ins)}</h3>${body}
@@ -738,7 +738,7 @@ async function loadMatch(matchId) {
   $("#seq").max = S.last;
   $("#focus").innerHTML = `<option value="">${t("nobody")}</option>` + [S.meta.home, S.meta.away].map((team) =>
     `<optgroup label="${esc(team.name)}">${team.players.map((p) =>
-      `<option value="${p.player_id}">#${p.shirt_number} ${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
+      `<option value="${esc(p.player_id)}">#${p.shirt_number} ${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
   S.chapters = await api(`/api/matches/${matchId}/stories`);
   renderChapters();
   renderDesk();
@@ -817,7 +817,7 @@ async function main() {
   }).catch(() => {});
   S.matches = await api("/api/matches");
   $("#match").innerHTML = S.matches.map((m) =>
-    `<option value="${m.match_id}">${esc(m.home)} v ${esc(m.away)}</option>`).join("");
+    `<option value="${esc(m.match_id)}">${esc(m.home)} v ${esc(m.away)}</option>`).join("");
   if (S.matches.length) await loadMatch(S.matches[0].match_id);
 }
 

@@ -4,16 +4,19 @@ Usage: uv run python scripts/voiceover.py [--voice en-GB-RyanNeural]
 
 Reads the voice-over column of docs/VIDEO.md (so script and audio never drift apart)
 and writes data/voiceover/NN_<start>.wav plus a timing summary. Keyless: the Foundry
-account (kind AIServices) includes Speech; `az login` and the "Cognitive Services
-Speech User" role on that account are enough. Never reads a .env file.
+account named by FOUNDRY_PROJECT_ENDPOINT (kind AIServices) includes Speech; `az
+login` and the "Cognitive Services Speech User" role on that account are enough.
+Never reads a .env file.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import wave
 from pathlib import Path
+from urllib.parse import urlparse
 from xml.sax.saxutils import escape
 
 import httpx
@@ -22,8 +25,6 @@ from azure.identity import DefaultAzureCredential
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "docs" / "VIDEO.md"
 OUT = ROOT / "data" / "voiceover"
-ACCOUNT = "pitchside-kpnhaamj4z3bg"  # the Foundry account (infra/foundry.bicep output)
-ENDPOINT = f"https://{ACCOUNT}.cognitiveservices.azure.com/tts/cognitiveservices/v1"
 FORMAT = "riff-24khz-16bit-mono-pcm"  # WAV: any editor takes it, and its length is exact
 LIMIT_S = 120.0
 
@@ -32,6 +33,15 @@ SAY = {
     "0.014": "zero point zero one four",
     "35 to 40 percent": "thirty-five to forty percent",
 }
+
+
+def tts_endpoint() -> str:
+    """Speech endpoint of the Foundry account named by FOUNDRY_PROJECT_ENDPOINT."""
+    project = os.environ.get("FOUNDRY_PROJECT_ENDPOINT")
+    if not project:
+        raise SystemExit("set FOUNDRY_PROJECT_ENDPOINT (infra/foundry.bicep output)")
+    account = (urlparse(project).hostname or "").split(".")[0]
+    return f"https://{account}.cognitiveservices.azure.com/tts/cognitiveservices/v1"
 
 
 def scenes() -> list[tuple[str, str]]:
@@ -60,6 +70,7 @@ def main() -> None:
     rows = scenes()
     if not rows:
         raise SystemExit(f"no voice-over rows found in {SCRIPT}")
+    endpoint = tts_endpoint()
     token = DefaultAzureCredential().get_token("https://cognitiveservices.azure.com/.default")
     headers = {"Authorization": f"Bearer {token.token}",
                "Content-Type": "application/ssml+xml",
@@ -69,7 +80,7 @@ def main() -> None:
     clips = []  # (start seconds, frames, params)
     with httpx.Client(timeout=60) as client:
         for i, (start, text) in enumerate(rows, start=1):
-            r = client.post(ENDPOINT, headers=headers, content=ssml(text, args.voice).encode())
+            r = client.post(endpoint, headers=headers, content=ssml(text, args.voice).encode())
             r.raise_for_status()
             path = OUT / f"{i:02d}_{start.replace(':', '-')}.wav"
             path.write_bytes(r.content)
